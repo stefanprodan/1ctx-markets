@@ -13,6 +13,7 @@ import { SourceError } from "../sources/source.ts";
 import type { IntradayAnswer, Window } from "../sources/yahoo/client.ts";
 import { checkAnswer } from "../sources/yahoo/history.ts";
 import {
+  type ExtendedHours,
   type ExtendedPoint,
   type ExtendedRead,
   type Markets,
@@ -178,6 +179,7 @@ async function readOne(
         : heldUntil(answer, m.quoteEveryMs),
       read,
       points: extendedPoints(answer),
+      hours: extendedHours(answer),
     });
     return read;
   } catch (error) {
@@ -208,6 +210,24 @@ export function extendedPoints(answer: IntradayAnswer): ExtendedPoint[] {
   return [...buckets.values()].sort((a, b) => a.at - b.at);
 }
 
+// each regular window widened by the pre and post windows that touch it, so
+// a chart's day can span the hours it may trade
+export function extendedHours(answer: IntradayAnswer): ExtendedHours[] {
+  if (answer.prePost !== true) return [];
+  const { pre, regular, post } = answer.windows;
+  const days = new Map<number, ExtendedHours>();
+  for (const r of regular) {
+    if (r.end <= r.start) continue;
+    const before = pre.find((w) => w.end === r.start && w.start < w.end);
+    const after = post.find((w) => w.start === r.end && w.start < w.end);
+    days.set(r.start, {
+      start: before?.start ?? r.start,
+      end: after?.end ?? r.end,
+    });
+  }
+  return [...days.values()].sort((a, b) => a.start - b.start);
+}
+
 // the same read and cache as the extended price, so a chart costs no call more
 // while closed; while open, one read keeps the day's pre-market to the close
 export async function readExtendedPoints(
@@ -219,11 +239,14 @@ export async function readExtendedPoints(
     instrument.id,
   )!;
   // refused (none, a failure): a cached answer is not this read's
-  if (REFUSED.has(read.reason)) return { points: [], reason: read.reason };
+  if (REFUSED.has(read.reason)) {
+    return { points: [], hours: [], reason: read.reason };
+  }
   const cached = m.extended.get(instrument.id);
+  const held = cached !== undefined && m.clock.now() < cached.until;
   return {
-    points:
-      cached !== undefined && m.clock.now() < cached.until ? cached.points : [],
+    points: held ? cached.points : [],
+    hours: held ? cached.hours : [],
     // read in the session: an empty list is none in the sessions answered
     reason: read.reason === EXTENDED.open ? null : read.reason,
   };
@@ -231,6 +254,7 @@ export async function readExtendedPoints(
 
 export type ExtendedPoints = {
   points: ExtendedPoint[];
+  hours: ExtendedHours[];
   reason: ExtendedReason | null;
 };
 

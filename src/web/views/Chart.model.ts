@@ -55,6 +55,8 @@ export type Intraday = {
   points: Point[];
   // pre and post trading, asked for 1D only
   extended_points?: { at: string; session: "pre" | "post"; close: number }[];
+  // the day's pre-market start to its post-market end, where it trades so
+  extended_session?: { start: string; end: string } | null;
 };
 
 export const INTRADAY = ["1D", "5D"] as const;
@@ -326,6 +328,43 @@ export function sessionSlots(
   return slots;
 }
 
+// every empty 5 minutes from the first price to the last, then to the day's
+// end: the post-market's where the listing trades after hours, else the
+// session's; equal-width points would otherwise squeeze time where none traded
+export function daySlots(
+  times: readonly number[],
+  session: Intraday["session"],
+  extended?: Intraday["extended_session"],
+): number[] {
+  const first = times[0];
+  const last = times.at(-1);
+  if (first === undefined || last === undefined) return [];
+  const slots: number[] = [];
+  for (let i = 1; i < times.length; i++) {
+    const to = times[i]!;
+    for (
+      let t = Math.floor(times[i - 1]! / SLOT_S) * SLOT_S + SLOT_S;
+      t + SLOT_S <= to;
+      t += SLOT_S
+    ) {
+      slots.push(t);
+    }
+  }
+  const frame = extended ?? session;
+  const start = Date.parse(frame?.start ?? "") / 1000;
+  const end = Date.parse(frame?.end ?? "") / 1000;
+  // a frame that is not the points' own day adds nothing after them
+  if (!(start <= first && last < end)) return slots;
+  for (
+    let t = Math.floor(last / SLOT_S) * SLOT_S + SLOT_S;
+    t <= end;
+    t += SLOT_S
+  ) {
+    slots.push(t);
+  }
+  return slots;
+}
+
 const clocks = new Map<string, Intl.DateTimeFormat>();
 
 // no zone is the viewer's; the library would label every time in UTC
@@ -445,6 +484,22 @@ export function legendOf(h: History, date: string | null): Legend | null {
   };
 }
 
+function priorPoint(
+  h: Intraday,
+  time: number,
+): { point: Point; session?: "pre" | "post" } | undefined {
+  const at = (p: { at: string }) => Date.parse(p.at) / 1000;
+  const regular = h.points.findLast((p) => at(p) <= time);
+  const outside = h.extended_points?.findLast((p) => at(p) <= time);
+  if (
+    outside !== undefined &&
+    (regular === undefined || at(outside) > at(regular))
+  ) {
+    return { point: { ...outside, final: true }, session: outside.session };
+  }
+  return regular === undefined ? undefined : { point: regular };
+}
+
 export function pointLegendOf(
   h: Intraday,
   time: number | null,
@@ -463,15 +518,25 @@ export function pointLegendOf(
   );
   const rest = after ? { ...after, final: true } : newest;
   const regular = time === null ? undefined : h.points.find(near);
-  // the session's empty slots ahead hold no price: the newest stands
-  const point = regular ?? (outside && { ...outside, final: true }) ?? rest;
+  // an empty slot holds the price before it, the newest past the last one
+  const before =
+    time === null || regular !== undefined || outside !== undefined
+      ? undefined
+      : priorPoint(h, time);
+  const point =
+    regular ??
+    (outside && { ...outside, final: true }) ??
+    before?.point ??
+    rest;
   if (point === undefined) return null;
   const session =
     regular !== undefined
       ? undefined
       : outside !== undefined
         ? outside.session
-        : after?.session;
+        : before !== undefined
+          ? before.session
+          : after?.session;
   const first = h.previous_close ?? h.points[0]?.close ?? null;
   const points = h.instrument.unit === "percent";
   const local = localTime(Date.parse(point.at) / 1000, zone);
@@ -520,6 +585,11 @@ export function axisPrice(v: number): string {
 
 // the axis's ticks: a year, a month's name, or a day with its month,
 // never a bare day number
+// a day's frame runs past UTC midnight into the post-market, where the
+// library marks a new day: 1D labels every tick with its time
+export const timeTick = (range: Range, timeType: boolean): boolean =>
+  range === "1D" || timeType;
+
 export function tick(date: string, kind: "year" | "month" | "day"): string {
   const d = new Date(`${date}T00:00:00Z`);
   if (kind === "year") return date.slice(0, 4);

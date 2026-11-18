@@ -31,7 +31,7 @@ import {
 import { ArgError } from "./args.ts";
 import { type ExtendedPoints, readExtendedPoints } from "./extended.ts";
 import { noFund, seenFund } from "./funds.ts";
-import type { Markets } from "./markets.ts";
+import type { ExtendedHours, Markets } from "./markets.ts";
 import { readLatest, sessionOf } from "./quote.ts";
 import { type ItemError, readTargets } from "./targets.ts";
 import { NO_ACCESS, type Who } from "./who.ts";
@@ -177,6 +177,14 @@ export async function readIntradayHistory(
           points: read.points.filter((p) =>
             days.has(localDate(instrument.zone, p.at)),
           ),
+          // the newest session answered, the one a day's chart draws
+          hours: read.hours
+            .filter(
+              (h) =>
+                localDate(instrument.zone, h.start) ===
+                sessions.at(-1)?.session,
+            )
+            .slice(-1),
           reason: read.reason,
         };
   return {
@@ -195,6 +203,9 @@ export async function readIntradayHistory(
   };
 }
 
+const extendedSession = (h: ExtendedHours | undefined) =>
+  h === undefined ? null : { start: iso(h.start), end: iso(h.end) };
+
 // an empty list always says why, so it never reads as no trading
 export const extendedOut = (read: ExtendedPoints | null) =>
   read === null
@@ -205,6 +216,7 @@ export const extendedOut = (read: ExtendedPoints | null) =>
           session: p.session,
           close: price(p.close),
         })),
+        extended_session: extendedSession(read.hours.at(-1)),
         extended_reason:
           read.points.length > 0 ? null : (read.reason ?? EXTENDED.outside),
       };

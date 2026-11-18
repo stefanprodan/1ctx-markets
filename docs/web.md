@@ -976,8 +976,14 @@ Portfolios page is the reference for each part.
   pre and post trading drawn faded and joined to the session (the
   day's pre-market while the session trades too, as a chart site does)
   (`extendedLines`, which drops a bar sharing the closing trade's time),
-  and spans its whole session to the close (`sessionSlots()`), so the
-  first minutes are a short line, not the whole width. A scale number a
+  and spans its whole day in 5-minute slots (`daySlots()`): to the
+  post-market's end where the listing trades after hours
+  (`extended_session`), else to the regular close, so the first
+  minutes are a short line, not the whole width, and the evening fills
+  room kept for it. Every empty 5 minutes between the first and the
+  last price is a slot too, in a series of its own so the lines stay
+  joined, so each 5 minutes is as wide and the hours fall evenly; the
+  legend over an empty slot reads the price before it. A scale number a
   price tag would cover is left blank (`clearOfTags`). Every other line
   is an area in the colour of its move.
 - **Candles only where the bars have an open**, a bar the live quote
