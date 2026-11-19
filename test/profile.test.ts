@@ -237,6 +237,15 @@ describe("the read", () => {
     );
   });
 
+  test("strikes only between double tildes", () => {
+    expect(renderMarkdown("from ~5 to ~6, ~~gone~~ `a~b`")).toBe(
+      '<p class="md-p">from ~5 to ~6, <del class="md-del">gone</del> <code class="md-code">a~b</code></p>',
+    );
+    expect(renderMarkdown("## ~5 up\n")).toBe(
+      '<h2 class="md-h2" id="md-5-up">~5 up</h2>',
+    );
+  });
+
   test("gives each heading an anchor, unique in one render", () => {
     const md = "## Notes\n\n### Notes\n\n## **Café** & `x`\n\n## Notes\n";
     const ids = [...renderMarkdown(md).matchAll(/ id="([^"]*)"/g)].map(

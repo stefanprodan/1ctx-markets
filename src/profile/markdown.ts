@@ -44,6 +44,14 @@ const wordsOf = (content: string): string =>
     .replace(/<[^>]*>/g, "")
     .replace(/&(amp|lt|gt|quot);/g, (e) => ENTITIES[e] ?? e);
 
+// the parser strikes between single tildes too, so "~5 to ~6" lost its
+// words; a lone tilde is held aside while parsing and only ~~ strikes
+const HELD = "\uFDD0";
+const LONE_TILDE = /(?<!~)~(?!~)/g;
+const holdTildes = (md: string) =>
+  md.replaceAll(HELD, "").replace(LONE_TILDE, HELD);
+const tildesBack = (s: string) => s.replaceAll(HELD, "~");
+
 export type DrawnHeading = { id: string; text: string };
 
 const CALLBACKS = {
@@ -108,14 +116,15 @@ export function drawMarkdown(md: string): {
   const callbacks = {
     ...CALLBACKS,
     heading: (content: string, meta: { level: number }) => {
-      const text = wordsOf(content);
+      const text = wordsOf(tildesBack(content));
       const id = anchor(text);
       headings.push({ id, text });
       return `<h${meta.level} class="md-h${meta.level}" id="${id}">${content}</h${meta.level}>`;
     },
   };
   try {
-    return { html: Bun.markdown.render(md, callbacks, OPTIONS), headings };
+    const html = Bun.markdown.render(holdTildes(md), callbacks, OPTIONS);
+    return { html: tildesBack(html), headings };
   } catch {
     return { html: `<p class="md-p">${escapeHtml(md)}</p>`, headings: [] };
   }
