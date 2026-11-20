@@ -60,15 +60,36 @@ function HeldRow({ p, h }: { p: Part; h: Holding }) {
   );
 }
 
-function OrderRow({ fills }: { fills: TradeRow[] }) {
+// a buy's move to the holding's price now, both in the listing's
+// currency; null for a sell, a reward or a fill with no rate
+export function sinceBuy(
+  fills: readonly TradeRow[],
+  h: Pick<Holding, "price">,
+): number | null {
+  const t = fills[0]!;
+  if (t.side !== "buy" || isReward(t) || h.price === null) return null;
+  let q = 0;
+  let paid = 0;
+  for (const x of fills) {
+    if (x.listing_price === null) return null;
+    q += x.quantity;
+    paid += x.quantity * x.listing_price;
+  }
+  if (q <= 0 || paid <= 0) return null;
+  return (h.price / (paid / q) - 1) * 100;
+}
+
+function OrderRow({ fills, h }: { fills: TradeRow[]; h: Holding }) {
   const t = fills[0]!;
   const o = orderOf(fills);
   const reward = isReward(t);
+  const since = sinceBuy(fills, h);
   return (
     <li class="pos-row">
       <span class="pos-main">
         <span class="pos-what">
           <span class={sideTag(t)}>{sideWord(t)}</span>
+          {since !== null && <Change s={percent(since)} class="pos-since" />}
         </span>
         <span class="pos-sub faint">
           {[day(t.date), t.broker].filter(Boolean).join(" · ")}
@@ -183,7 +204,7 @@ export function PositionsBody({
           </h3>
           <ul class="pos-list">
             {orders.slice(0, shown.value).map((f) => (
-              <OrderRow key={f[0]!.id} fills={f} />
+              <OrderRow key={f[0]!.id} fills={f} h={h} />
             ))}
           </ul>
           {orders.length > shown.value && (
