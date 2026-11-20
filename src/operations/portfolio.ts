@@ -38,7 +38,7 @@ import {
   setFundMarket,
   setFundPrice,
 } from "../portfolios/funds.ts";
-import { missingPairs, rates } from "../portfolios/fx.ts";
+import { missingPairs, type Rates, rates } from "../portfolios/fx.ts";
 import { type Growth, growth } from "../portfolios/growth.ts";
 import { type NetWorth, netWorth } from "../portfolios/net-worth.ts";
 import {
@@ -893,7 +893,22 @@ export function listAll(m: Markets, owner: string) {
   };
 }
 
-export function tradeItem(db: Db, owner: string, t: Trade) {
+// a trade's price in its listing's currency, at the pair's close on its
+// day, so a chart in that currency reads what was paid; null with no rate
+function listingPrice(fx: Rates, t: Trade, i: Instrument | null) {
+  if (i === null || i.currency === null) return null;
+  if (t.price === 0 || i.unit === "percent_of_par") return exact(t.price);
+  const r = fx.rate(t.currency, i.currency, t.date);
+  return r.rate === null ? null : exact(t.price * r.rate);
+}
+
+// one read's trades share their rates; a dated rate never reads the clock
+export function tradeItem(
+  db: Db,
+  owner: string,
+  t: Trade,
+  fx: Rates = rates(db, 0, 0),
+) {
   const i = readInstrument(db, t.instrument);
   const f = splitFactor(splitsOf(db, t.instrument), statedOf(t));
   const p = readPortfolio(db, owner, t.portfolio);
@@ -911,6 +926,7 @@ export function tradeItem(db: Db, owner: string, t: Trade) {
     fees: t.fees,
     currency: t.currency,
     listing_currency: i?.currency ?? null,
+    listing_price: listingPrice(fx, t, i),
     // percent_of_par: the price is a percent of face
     unit: i?.unit ?? null,
     // the day its quantity and price are stated as of
@@ -1104,6 +1120,7 @@ export function readTradeList(
   if (isFailure(p)) return p;
   const b = findBroker(m.db, owner, args.broker);
   if (isFailure(b)) return b;
+  const fx = rates(m.db, 0, 0);
   let instrument: string | null = null;
   if (args.symbol !== null) {
     const upper = args.symbol.toUpperCase();
@@ -1124,7 +1141,7 @@ export function readTradeList(
     from: args.from,
     to: args.to,
     removed: args.removed,
-  }).map((t) => tradeItem(m.db, owner, t));
+  }).map((t) => tradeItem(m.db, owner, t, fx));
 }
 
 // ---- writes --------------------------------------------------------------

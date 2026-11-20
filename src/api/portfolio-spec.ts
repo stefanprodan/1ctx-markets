@@ -126,6 +126,10 @@ const trade = object(
     fees: num,
     currency: note(str, "What it was paid in."),
     listing_currency: nstr,
+    listing_price: note(
+      nnum,
+      "The price in `listing_currency`, at the currency pair's close on or before `date`; null with no rate.",
+    ),
     unit: note(
       nstr,
       "The listing's unit; `percent_of_par`: the price is a percent of face.",
@@ -155,6 +159,7 @@ const trade = object(
     "fees",
     "currency",
     "listing_currency",
+    "listing_price",
     "unit",
     "stated_on",
     "broker",

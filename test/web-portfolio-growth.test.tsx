@@ -133,6 +133,7 @@ const trade = (id: number): TradeRow => ({
   price: 80,
   fees: 0,
   currency: "EUR",
+  listing_price: 80,
   broker: "North",
   note: null,
   entered_by: "casey-agent",

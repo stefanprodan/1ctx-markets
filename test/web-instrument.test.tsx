@@ -340,6 +340,7 @@ const trade = (id: number, more: Partial<TradeRow> = {}): TradeRow => ({
   price: 50,
   fees: 0,
   currency: "USD",
+  listing_price: 50,
   unit: "per_share",
   broker: "North",
   note: null,
@@ -1044,6 +1045,20 @@ describe("a fund the owner prices, on its page", () => {
     expect(tradeText({ ...mark, side: "buy", month: false })).toBe(
       "Bought 4 at 17.50",
     );
+    // no rate to the chart's currency: no price, never one in another
+    expect(tradeText({ ...mark, price: null, side: "buy", month: true })).toBe(
+      "Bought 4",
+    );
+  });
+
+  test("a month with a trade of no rate has no average", () => {
+    const times = ["2026-09-01", "2026-09-15"];
+    expect(
+      monthlyShares(times, [
+        { date: "2026-09-02", side: "buy", quantity: 1, price: 10 },
+        { date: "2026-09-16", side: "buy", quantity: 3, price: null },
+      ]),
+    ).toEqual([{ time: "2026-09-15", side: "buy", price: null, quantity: 4 }]);
   });
 
   test("a year or more sums each month's trades on its latest trade's bar", () => {

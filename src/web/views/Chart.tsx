@@ -118,6 +118,7 @@ export const tradeText = (d: TradeMark & { month: boolean }) => {
   if (d.side === "buy" && d.price === 0)
     return `Reward ${quantity(d.quantity)}`;
   const did = d.side === "buy" ? "Bought" : "Sold";
+  if (d.price === null) return `${did} ${quantity(d.quantity)}`;
   return d.month
     ? `${did} ${quantity(d.quantity)} · avg ${figure(d.price)}`
     : `${did} ${quantity(d.quantity)} at ${figure(d.price)}`;
@@ -383,13 +384,14 @@ export function Chart({
   const log = useSignal(kept.log);
   const sma50 = useSignal(kept.sma50);
   const sma200 = useSignal(kept.sma200);
-  // the caller's trades of this instrument, marked on its line
+  // the caller's trades of this instrument, marked on its line at the
+  // price paid in the listing's currency
   const trades = useSignal<
     readonly {
       date: string;
       side: "buy" | "sell";
       quantity: number;
-      price: number;
+      price: number | null;
     }[]
   >([]);
   const tradesRead = useMemo(
@@ -397,7 +399,9 @@ export function Chart({
       untilRead(
         () => markets.portfolios.tradesOf(id),
         (got) => {
-          const kept = got.filter((t) => t.removed_at === null);
+          const kept = got
+            .filter((t) => t.removed_at === null)
+            .map((t) => ({ ...t, price: t.listing_price }));
           // an empty answer for an empty list would redraw for nothing
           if (kept.length > 0 || trades.value.length > 0) trades.value = kept;
         },
