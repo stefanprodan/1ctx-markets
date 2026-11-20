@@ -1037,6 +1037,34 @@ describe("every operation", () => {
     await check("DELETE", path, await del("<b>"), 400);
     await check("DELETE", path, await del("US:NVDA", wrong), 401);
     await check("DELETE", path, await del("US:NVDA", reader), 403);
+    const isinAt = (id: string, body: unknown, init: RequestInit = {}) =>
+      at(id, { ...json(body), method: "PATCH", ...init });
+    const isin = { isin: "IE00BFMXXD54" };
+    await check("PATCH", path, await isinAt("US:NVDA", isin), 200);
+    // the instrument page shows it once set
+    expect(((await (await at("US:NVDA")).json()) as any).isin).toBe(isin.isin);
+    await check("PATCH", path, await isinAt("US:NVDA", { isin: null }), 200);
+    await check("PATCH", path, await isinAt("US:NOPE", isin), 404);
+    await check(
+      "PATCH",
+      path,
+      await isinAt("US:NVDA", { isin: "IE00BFMXXD55" }),
+      400,
+    );
+    await check("PATCH", path, await isinAt("US:NVDA", isin, wrong), 401);
+    await check("PATCH", path, await isinAt("US:NVDA", isin, reader), 403);
+    await check(
+      "PATCH",
+      path,
+      await isinAt("US:NVDA", { isin: "x".repeat(20_000) }),
+      413,
+    );
+    await check(
+      "PATCH",
+      path,
+      await at("US:NVDA", { ...json(isin, "text/plain"), method: "PATCH" }),
+      415,
+    );
 
     // the alert deleted last: its history stays
     await check(

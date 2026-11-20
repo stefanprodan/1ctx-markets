@@ -54,7 +54,7 @@ import { day, next, schema, symbol, type Tool } from "./schema.ts";
 import { tradePlansTools } from "./trade-plans.ts";
 
 const quoteDescription = (m: Markets) =>
-  `Live prices or FRED observations, returns and signals for 1 to ${MAX_SYMBOLS} symbols. Symbols: a stored id (US:NVDA), a Yahoo symbol (VVSM.DE, ^VIX), FRED:<series id> or a name; several listings answer candidates. A new one is fetched in ${m.callMs / 1000} s, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signals (live, close or final: averages, RSI, MACD, ATR, volatility, Bollinger, 52w range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd, 1y percent (points for a yield) to the live price or last final close (live says which), null if too few bars. session: open or closed (regular; closed briefly at an open), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. extended true adds extended: the last pre- or post-market price (change from the regular close), or null with extended_reason, and opens: the next regular start once known, while closed. FRED: last observation, price null. Errors are items.`;
+  `Live prices or FRED observations, returns and signals for 1 to ${MAX_SYMBOLS} symbols. Symbols: a stored id (US:NVDA), a Yahoo symbol (VVSM.DE, ^VIX), FRED:<series id> or a name; several listings answer candidates. A new one is fetched in ${m.callMs / 1000} s, else timeout: call again. Each item: price, previous close, change, day range, volume, trade_time, fetched_at, daily and weekly signals (live, close or final: averages, RSI, MACD, ATR, volatility, Bollinger, 52w range, drawdown, volume ratio), stale. returns: 1w, 1m, 3m, ytd, 1y percent (points for a yield) to the live price or last final close (live says which), null if too few bars. session: open or closed (regular; closed briefly at an open), start, end. benchmark (one symbol) adds relative_return_1m, _3m in percentage points. extended true adds extended: a pre- or post-market price, or a XETRA listing's Tradegate quote all day, or null with extended_reason, and opens: the next regular start once known, while closed. FRED: last observation, price null. Errors are items.`;
 
 const HISTORY = `Daily (1d) or weekly (1wk) bars of one symbol, oldest first, each with its final flag and that date's signal row. final stays false until the next session shows; a closed day's last bar holds the day's close, as quote's price does. to and from (YYYY-MM-DD) default to the latest bar and ${DEFAULT_MONTHS["1d"]} months before (1d) or ${DEFAULT_MONTHS["1wk"]} (1wk). Prices are split-adjusted; averages and returns exclude dividends and FX. A benchmark (any symbol, e.g. QQQ or ^GDAXI) adds the 1- and 3-month return relative to it at to, in percentage points (points for a yield or spread), naming both currencies. interval 5m: today's or the last ${INTRADAY_SESSIONS} sessions' 5-minute closes, regular hours, as fresh as the quote pass: points (at UTC, session date, close, final), each session's fetched_at, previous_close (a move's base); from and to are session dates, the newest stored by default; no signals or benchmark. extended true adds extended_points: pre- and post-market 5-minute closes, else none with extended_reason, and extended_session. Symbols as in quote.`;
 
@@ -106,7 +106,12 @@ export function tools(m: Markets, opens: Opens = ALL): Tool[] {
             items: symbol,
           },
           benchmark: symbol,
-          extended: { type: "boolean", default: false },
+          extended: {
+            type: "boolean",
+            default: false,
+            description:
+              "extended's source: yahoo, a US listing's last pre- or post-market price, change from the regular close; tradegate, a XETRA listing with an ISIN (set by portfolio_trade), Tradegate's live price, bid, ask, day range and volume from 07:30 to 22:00 Berlin, session pre, regular, post or closed (its last values), change from Xetra's previous close before and during its session, today's close after. Tradegate is a venue some brokers execute on, and a proxy for others' Xetra price.",
+          },
           next,
         },
         ["symbols"],

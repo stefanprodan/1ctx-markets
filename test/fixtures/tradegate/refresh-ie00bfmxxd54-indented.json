@@ -1,0 +1,11 @@
+{
+  "note": "seen the same day, its time not kept: written indented, without refresh",
+  "recordedAt": "2026-11-20T13:07:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://www.tradegatebsx.com/refresh.php?isin=IE00BFMXXD54"
+  },
+  "status": 200,
+  "headers": {},
+  "body": "{\n    \"bid\": 125.415,\n    \"ask\": 125.435,\n    \"bidsize\": 1000,\n    \"asksize\": 600,\n    \"delta\": -0.97,\n    \"stueck\": 71337,\n    \"umsatz\": 8982395,\n    \"avg\": 125.9149,\n    \"executions\": 11425,\n    \"last\": 125.435,\n    \"high\": 126.585,\n    \"low\": 124.91,\n    \"close\": 126.66\n}"
+}

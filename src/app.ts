@@ -55,6 +55,7 @@ import { type Massive, massive } from "./sources/massive/client.ts";
 import { type MassiveJobs, massiveJobs } from "./sources/massive/jobs.ts";
 import { pruneNews } from "./sources/massive/store.ts";
 import { type Backoff, type Fetch, queue } from "./sources/source.ts";
+import { type Tradegate, tradegate } from "./sources/tradegate/client.ts";
 import { type Yahoo, yahoo } from "./sources/yahoo/client.ts";
 import { fastQuotes } from "./sources/yahoo/fast.ts";
 import { settleStored } from "./sources/yahoo/history.ts";
@@ -143,6 +144,8 @@ export type App = {
   // keyless and always on, as Yahoo is
   cftc: Cftc;
   cftcJobs: CftcJobs;
+  // keyless and always on, read only inside a quote that asks
+  tradegate: Tradegate;
   bvb: Bvb | null;
   bvbJobs: BvbJobs | null;
   // moves the Bucharest market between Yahoo and the feed
@@ -381,6 +384,12 @@ export function start(options: AppOptions): App {
   // the market list at once, so search finds a market from the start
   if (syncing) void cftcSync.tick();
 
+  const tradegateClient = tradegate({
+    clock,
+    fetch: options.fetch,
+    log: sourcesLog,
+  });
+
   const reads = markets({
     db,
     clock,
@@ -392,6 +401,7 @@ export function start(options: AppOptions): App {
     massive: massiveClient,
     edgar: edgarClient,
     cftc: { client: cftcClient, list: cftcList },
+    tradegate: tradegateClient,
     hooks,
     rules,
     log: options.log("tools"),
@@ -438,6 +448,12 @@ export function start(options: AppOptions): App {
       on: true,
       why: "always",
       backoff: () => cftcClient.backoff(),
+    },
+    {
+      name: "tradegate",
+      on: true,
+      why: "always",
+      backoff: () => tradegateClient.backoff(),
     },
     {
       name: "bvb",
@@ -565,6 +581,7 @@ export function start(options: AppOptions): App {
     edgarJobs: edgarSync,
     cftc: cftcClient,
     cftcJobs: cftcSync,
+    tradegate: tradegateClient,
     bvb: bvbClient,
     bvbJobs: bvbSync,
     sourceSwitch: switcher,
@@ -590,6 +607,7 @@ export function start(options: AppOptions): App {
       massiveClient?.close();
       edgarClient?.close();
       cftcClient.close();
+      tradegateClient.close();
       bvbClient?.close();
       await server.stop();
       await settled;

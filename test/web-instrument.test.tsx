@@ -15,11 +15,14 @@ import {
 } from "../src/web/data/store.ts";
 import { briefQuantity } from "../src/web/lib/format.ts";
 import { stopped } from "../src/web/lib/names.ts";
+import { MenuButton } from "../src/web/ui/Menu.tsx";
 import { barWidth } from "../src/web/ui/Weights.tsx";
 import { monthlyShares, tradeMarks } from "../src/web/views/Chart.model.ts";
 import { tradeText } from "../src/web/views/Chart.tsx";
 import {
+  afterHours,
   buyable,
+  isinInput,
   onSymbolPage,
   priceState,
 } from "../src/web/views/Instrument.model.ts";
@@ -704,6 +707,101 @@ describe("an instrument's page by role", () => {
       markets.detail.value = null;
       markets.detailId.value = null;
     }
+  });
+});
+
+describe("an instrument's ISIN", () => {
+  // made up, its check digit right
+  const LISTED = "ZZLIST000016";
+  // the open menu's items, as a click on More draws them
+  const items = (props: Parameters<typeof InstrumentMenu>[0]) => {
+    const nodes: any[] = [];
+    const before = options.vnode;
+    options.vnode = (v) => {
+      nodes.push(v);
+      before?.(v);
+    };
+    try {
+      render(<InstrumentMenu {...props} />);
+    } finally {
+      options.vnode = before;
+    }
+    const button = nodes.find((n) => n.type === MenuButton)!;
+    return render(<>{button.props.children(() => {})}</>);
+  };
+  const base = {
+    symbol: "VUAA",
+    busy: false,
+    done: false,
+    removing: false,
+    onRefetch: () => {},
+    onDelete: () => {},
+    onIsin: async () => null,
+  };
+
+  test("Set ISIN is in the menu for an admin only", () => {
+    expect(items({ ...base, admin: true })).toContain("Set ISIN");
+    expect(items({ ...base, admin: false })).not.toContain("Set ISIN");
+  });
+
+  test("the field takes an ISIN in any case, empty to take it off", () => {
+    expect(isinInput(` ${LISTED.toLowerCase()} `)).toBe(LISTED);
+    expect(isinInput("  ")).toBeNull();
+    expect(isinInput(`${LISTED.slice(0, -1)}7`)).toBeUndefined();
+    expect(isinInput("VUAA")).toBeUndefined();
+  });
+
+  test("the page shows it once set, and hands the menu the write", () => {
+    markets.detailId.value = "XETRA:VUAA";
+    markets.detail.value = detail({ id: "XETRA:VUAA" }, { isin: LISTED });
+    markets.me.value = {
+      id: "operator",
+      name: "Casey",
+      role: "admin",
+      email: null,
+      operator: true,
+    };
+    const nodes: any[] = [];
+    const before = options.vnode;
+    options.vnode = (v) => {
+      nodes.push(v);
+      before?.(v);
+    };
+    try {
+      const html = render(<Instrument params={{ id: "XETRA:VUAA" }} />);
+      expect(html).toContain(LISTED);
+      const menu = nodes.find((n) => n.type === InstrumentMenu)!.props;
+      expect(menu.isin).toBe(LISTED);
+      expect(typeof menu.onIsin).toBe("function");
+    } finally {
+      options.vnode = before;
+      markets.me.value = null;
+      markets.detail.value = null;
+      markets.detailId.value = null;
+    }
+  });
+
+  test("Tradegate's price shows beside the close only while Xetra is closed", () => {
+    const at = (session: string) =>
+      afterHours(
+        detail(
+          {},
+          {},
+          {
+            extended: {
+              session: session as never,
+              price: 51,
+              change: 1,
+              change_percent: 2,
+              time: "2026-11-01T19:00:00Z",
+            },
+          },
+        ),
+      )?.word ?? null;
+    expect(at("pre")).toBe("Pre-market");
+    expect(at("post")).toBe("After hours");
+    expect(at("closed")).toBe("After hours");
+    expect(at("regular")).toBeNull();
   });
 });
 

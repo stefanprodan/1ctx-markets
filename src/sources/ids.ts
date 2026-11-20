@@ -12,6 +12,9 @@ export const MASSIVE = "massive";
 export const EDGAR = "edgar";
 export const CFTC = "cftc";
 export const CFTC_MARKET = "CFTC";
+export const TRADEGATE = "tradegate";
+// Yahoo's Xetra listings, whose extended price is Tradegate's
+export const XETRA_MARKET = "XETRA";
 // a fund the owner prices: no source fetches it, and every source's
 // market is upper case, so this lower-case one is never a listing's
 export const FUND_SOURCE = "owner";

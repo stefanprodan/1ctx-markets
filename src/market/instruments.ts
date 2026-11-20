@@ -146,3 +146,28 @@ export function upsertInstrument(
   );
   return readInstrument(db, id)!;
 }
+
+// apart from Instrument: only a quote's extended read and its pages use it
+export function readIsin(db: Db, id: string): string | null {
+  return (
+    db
+      .query<{ isin: string | null }, [string]>(
+        "select isin from instruments where id = ?",
+      )
+      .get(id)?.isin ?? null
+  );
+}
+
+// false when no such instrument is stored
+export function writeIsin(
+  db: Db,
+  id: string,
+  isin: string | null,
+  now: number,
+): boolean {
+  return (
+    db
+      .query("update instruments set isin = ?, updated_at = ? where id = ?")
+      .run(isin, now, id).changes > 0
+  );
+}

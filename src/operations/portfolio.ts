@@ -4,7 +4,12 @@
 // message here quotes a quantity, a price or a value, and nothing is logged.
 
 import { iso } from "../market/format.ts";
-import { type Instrument, readInstrument } from "../market/instruments.ts";
+import {
+  type Instrument,
+  readInstrument,
+  readIsin,
+  writeIsin,
+} from "../market/instruments.ts";
 import { readQuote } from "../market/quotes.ts";
 import { markRead } from "../market/tracking.ts";
 import { checkZone, localDate } from "../market/zone.ts";
@@ -266,7 +271,10 @@ export type PortfolioArgs =
     } & HoldingsArgs)
   | ({ action: "trades"; next: string | null } & TradesArgs)
   | { action: "history"; position: number }
-  | { action: "add"; kind: "trade"; trade: TradeArgs }
+  // isin: the listing's, stored on it once the trade is saved
+  | { action: "add"; kind: "trade"; trade: TradeArgs; isin?: string | null }
+  // a listing's ISIN, null takes it off
+  | { action: "set"; symbol: string; isin: string | null }
   | { action: "add"; kind: "fund"; fund: FundTradeArgs }
   | { action: "add"; kind: PositionKind; position: PositionArgs }
   | {
@@ -1227,16 +1235,45 @@ export async function addTrade(
   m: Markets,
   who: Who,
   args: TradeArgs,
+  isin: string | null = null,
 ): Promise<Added | Failure> {
   // a fund's key, as holdings and trades answer it, names the fund
   if (isFundKey(args.symbol)) {
+    if (isin !== null) return { error: "bad_arguments", message: FUND_ISIN };
     const f = fundByIsin(m.db, args.symbol);
     if (f === null) return notFound(`${quoted(args.symbol)}: ${NO_FUND}`);
     return addTradeOn(m, who, args, readInstrument(m.db, f.id)!, null);
   }
   const i = await instrumentOf(m, args.symbol);
   if (isFailure(i)) return i;
-  return addTradeOn(m, who, args, i, null);
+  return addTradeOn(m, who, args, i, isin === null ? null : { isin });
+}
+
+const FUND_ISIN = "a fund's ISIN is its key, fund:<ISIN>";
+
+// a listing's ISIN, which another listing of the same fund may share
+const otherIsin = (id: string, held: string): Failure => ({
+  error: "bad_arguments",
+  message: `${id} has ISIN ${held}; portfolio_trade set replaces it`,
+});
+
+export async function setIsin(
+  m: Markets,
+  symbol: string,
+  isin: string | null,
+): Promise<object | Failure> {
+  if (isFundKey(symbol)) {
+    return { error: "bad_arguments", message: FUND_ISIN };
+  }
+  const i = await instrumentOf(m, symbol);
+  if (isFailure(i)) return i;
+  if (isFund(i)) return { error: "bad_arguments", message: FUND_ISIN };
+  const done = await m.writer.write((db) => {
+    recheck(db);
+    return writeIsin(db, i.id, isin, m.clock.now());
+  });
+  if (!done) return notFound(`${i.id}: deleted while its ISIN was set`);
+  return { instrument: { id: i.id, name: i.name, isin } };
 }
 
 const NO_FUND = "no such fund; its first buy makes it, with its isin";
@@ -1248,7 +1285,7 @@ async function addTradeOn(
   who: Who,
   args: TradeArgs,
   i: Instrument,
-  make: { fund: NewFund } | { market: string | null } | null,
+  make: { fund: NewFund } | { market: string | null } | { isin: string } | null,
 ): Promise<Added | Failure> {
   const owner = who.user;
   const p = portfolioFor(m.db, owner, args.portfolio);
@@ -1378,6 +1415,9 @@ async function addTradeOn(
     } else if (readInstrument(db, i.id) === null) {
       return notFound(`${i.id}: deleted while the trade was added`);
     }
+    const isin = make !== null && "isin" in make ? make.isin : null;
+    const held = isin === null ? null : readIsin(db, i.id);
+    if (held !== null && held !== isin) return otherIsin(i.id, held);
     const seen = liveAdds.get(m) ?? new Map();
     liveAdds.set(m, seen);
     for (const [key, add] of seen) {
@@ -1402,6 +1442,7 @@ async function addTradeOn(
     }
     if (making !== null) insertFund(db, making, who.name, now);
     const ids = rows.map((row) => insertTrade(db, row, now));
+    if (isin !== null && held === null) writeIsin(db, i.id, isin, now);
     if (liveKey !== null) seen.set(liveKey, { at: now, id: ids[0]! });
     if (make !== null && "market" in make && make.market !== null) {
       setFundMarket(db, i.id, make.market);
@@ -2711,7 +2752,8 @@ export async function portfolioAnswer(
     args.action === "update" ||
     args.action === "remove" ||
     args.action === "restore" ||
-    args.action === "rename_broker";
+    args.action === "rename_broker" ||
+    args.action === "set";
   if (!opens(who.portfolio, writes)) {
     return errorResult(forbidden(writes));
   }
@@ -2732,11 +2774,13 @@ export async function portfolioAnswer(
     case "add":
       return answered(
         "trade" in args
-          ? await addTrade(m, who, args.trade)
+          ? await addTrade(m, who, args.trade, args.isin ?? null)
           : "fund" in args
             ? await addFundTrade(m, who, args.fund)
             : withPosition(await addPosition(m, who, args.position)),
       );
+    case "set":
+      return answered(await setIsin(m, args.symbol, args.isin));
     case "update": {
       if ("fund" in args) {
         return answered(await updateFund(m, who, args.fund, args.change));

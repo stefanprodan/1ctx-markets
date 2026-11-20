@@ -215,6 +215,14 @@ export function Instrument({ params }: { params: Params }) {
                 removing={removing.value}
                 onRefetch={() => void run(options[0]!)}
                 onDelete={() => void remove()}
+                isin={detail.isin ?? null}
+                onIsin={async (isin) => {
+                  const error = await markets.setIsin(id, isin);
+                  if (error === null && onSymbolPage(path.peek(), id)) {
+                    said.value = { text: "Saved", bad: false };
+                  }
+                  return error;
+                }}
               />
             )}
           </>

@@ -143,13 +143,15 @@ export type View = "cards" | "table";
 
 export type Gap = { distance_pct: number | null; crossed_today?: boolean };
 
-// pre or post trading while the regular session is closed
+// pre or post trading while the regular session is closed; a Xetra
+// listing's is Tradegate's, all day, regular while Xetra trades
 export type Extended = {
-  session: "pre" | "post";
+  session: "pre" | "post" | "regular" | "closed";
   price: number | null;
   change: number | null;
   change_percent: number | null;
-  time: string;
+  // null: a closed Tradegate quote whose last trading day is not known
+  time: string | null;
 };
 
 export type BoardItem = {
@@ -286,6 +288,8 @@ export type Detail = {
   // who the prices are from: the source's name and site
   credit: { name: string; url: string } | null;
   instrument: Listed;
+  // a listing's, once set; a fund the owner prices has none here
+  isin?: string | null;
   // whether its source gives 5-minute closes, for 1D and 5D
   intraday: boolean;
   // null when the read failed; error says why
@@ -1065,6 +1069,21 @@ export function store(
     return done.parts;
   }
 
+  // an admin's; null once saved, else what to say
+  async function setIsin(
+    id: string,
+    isin: string | null,
+  ): Promise<string | null> {
+    try {
+      await call(instrumentPath(id), "PATCH", { isin });
+    } catch (error) {
+      const t = says(error);
+      return /^isin /i.test(t) ? "Not a valid ISIN." : t;
+    }
+    if (askedId === id) void loadInstrument(id, true);
+    return null;
+  }
+
   async function retry(): Promise<Retried> {
     const done = await call<Retried>(RETRY_PATH, "POST");
     void loadStatus();
@@ -1295,7 +1314,13 @@ export function store(
           quotes: { id?: string; extended?: Extended | null }[];
         }>(extendedPath(closed.slice(i, i + EXTENDED_BATCH)));
         for (const x of r.quotes) {
-          if (x.id && x.extended && x.extended.price !== null) {
+          if (
+            x.id &&
+            x.extended &&
+            x.extended.price !== null &&
+            x.extended.time !== null &&
+            x.extended.session !== "regular"
+          ) {
             next.set(x.id, x.extended);
           }
         }
@@ -1564,6 +1589,7 @@ export function store(
     refreshInstrument,
     refetch,
     remove,
+    setIsin,
     screenAsk,
     screener,
     screenerError,

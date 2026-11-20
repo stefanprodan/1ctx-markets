@@ -3,6 +3,7 @@
 // The portfolio tools as an agent calls them: made-up data only.
 
 import { describe, expect, test } from "bun:test";
+import { readIsin } from "../src/market/instruments.ts";
 import type { Markets } from "../src/operations/markets.ts";
 import {
   createBroker,
@@ -25,6 +26,9 @@ const CASEY: Who = {
   tradePlans: "none",
 };
 const ONE = "ZZFUND000011";
+// made up, their check digits right
+const LISTED = "ZZLIST000016";
+const OTHER = "ZZLIST000024";
 
 async function setup() {
   const w = world();
@@ -64,6 +68,78 @@ const bond = (m: Markets, more: object = {}) =>
   });
 
 describe("portfolio_trade", () => {
+  test("keeps a listing's ISIN from a trade; set sets, replaces and clears it", async () => {
+    const { m, db } = await setup();
+    const add = (more: object) =>
+      tool(m, "portfolio_trade", {
+        action: "add",
+        symbol: "US:AAA",
+        side: "buy",
+        quantity: 1,
+        price: 100,
+        date: "2026-01-05",
+        ...more,
+      });
+    const trades = () =>
+      db.query("select count(*) as n from trades").get() as { n: number };
+    const made = await add({ isin: LISTED.toLowerCase() });
+    expect(made.error).toBe(false);
+    expect(made.body.trade).toMatchObject({ symbol: "US:AAA" });
+    expect(readIsin(db, "US:AAA")).toBe(LISTED);
+    expect((await add({ isin: LISTED, quantity: 2 })).error).toBe(false);
+    // another ISIN is refused, and its trade is not saved
+    const before = trades().n;
+    const other = await add({ isin: OTHER, quantity: 3 });
+    expect(other.error).toBe(true);
+    expect(other.body.message).toBe(
+      `US:AAA has ISIN ${LISTED}; portfolio_trade set replaces it`,
+    );
+    expect(trades().n).toBe(before);
+    const set = (isin: unknown) =>
+      tool(m, "portfolio_trade", { action: "set", symbol: "US:AAA", isin });
+    expect((await set(OTHER)).body).toEqual({
+      instrument: { id: "US:AAA", name: "Alpha Made Up", isin: OTHER },
+    });
+    expect(readIsin(db, "US:AAA")).toBe(OTHER);
+    expect((await set(null)).body.instrument.isin).toBeNull();
+    expect(readIsin(db, "US:AAA")).toBeNull();
+    // a trade without one leaves it as it is
+    await set(LISTED);
+    expect((await add({ quantity: 4 })).error).toBe(false);
+    expect(readIsin(db, "US:AAA")).toBe(LISTED);
+  });
+
+  test("refuses an ISIN that is not one, and set without one", async () => {
+    const { m, db } = await setup();
+    const typo = `${LISTED.slice(0, -1)}7`;
+    const refused: [object, string][] = [
+      [{ action: "set", symbol: "US:AAA", isin: typo }, "isin must be an ISIN"],
+      [{ action: "set", symbol: "US:AAA" }, "set takes isin"],
+      [{ action: "set", symbol: `fund:${ONE}`, isin: ONE }, "a fund's ISIN"],
+      [{ action: "set", symbol: "US:AAA", isin: LISTED, side: "buy" }, "side"],
+      [
+        {
+          action: "add",
+          symbol: "US:AAA",
+          side: "buy",
+          quantity: 1,
+          price: 1,
+          isin: typo,
+        },
+        "isin must be an ISIN",
+      ],
+    ];
+    for (const [args, words] of refused) {
+      const r = await tool(m, "portfolio_trade", args);
+      expect([args, r.error, r.body.message]).toEqual([
+        args,
+        true,
+        expect.stringContaining(words),
+      ]);
+    }
+    expect(readIsin(db, "US:AAA")).toBeNull();
+  });
+
   test("records a share, and a fund by isin, its key or its name", async () => {
     const { m } = await setup();
     const share = await tool(m, "portfolio_trade", {
@@ -142,7 +218,7 @@ describe("portfolio_trade", () => {
     const refused: [object, string][] = [
       [{ quantity: 1, all: true }, "quantity or all, not both"],
       [{ all: true }, "all sells what is held"],
-      [{ quantity: 1, isin: ONE }, "not both"],
+      [{ quantity: 1, name: "Made Up" }, "a trade names symbol"],
       [{ quantity: 1, market: "US" }, "market is a fund's"],
       [{ symbol: `fund:${ONE}`, isin: ONE, quantity: 1 }, "isin or symbol"],
       [{ symbol: undefined, quantity: 1 }, "add names symbol"],

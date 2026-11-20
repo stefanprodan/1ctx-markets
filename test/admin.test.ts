@@ -45,7 +45,7 @@ import {
 import { yahoo } from "../src/sources/yahoo/client.ts";
 import { type Db, open } from "../src/storage/db/index.ts";
 import { writer } from "../src/storage/writer.ts";
-import { api } from "./helpers/api.ts";
+import { api, cookieFor, READ_KEY } from "./helpers/api.ts";
 import { withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
@@ -414,6 +414,7 @@ describe("the admin scope", () => {
           ["massive", "Massive", "Massive", "M"],
           ["edgar", "SEC EDGAR", "EDGAR", "SEC"],
           ["cftc", "CFTC Commitments of Traders", "CFTC", "CFTC"],
+          ["tradegate", "Tradegate", "Tradegate", "TG"],
           ["bvb", "Bucharest Stock Exchange", "BVB", "BVB"],
         ]);
         const [yahoo, fred] = b.sources;
@@ -435,6 +436,11 @@ describe("the admin scope", () => {
           key: null,
         });
         expect(b.sources[6]).toMatchObject({
+          state: "on",
+          why: "always",
+          key: null,
+        });
+        expect(b.sources[7]).toMatchObject({
           state: "off",
           why: "no flag",
           key: null,
@@ -945,7 +951,7 @@ describe("delete", () => {
       (
         await handle(
           new Request("http://markets.test/api/v1/instruments/%E0%A4%A", {
-            method: "PATCH",
+            method: "PUT",
           }),
         )
       ).status,
@@ -968,6 +974,80 @@ describe("delete", () => {
         )
       ).status,
     ).toBe(404);
+  });
+});
+
+describe("an instrument's ISIN", () => {
+  // made up, its check digit right
+  const LISTED = "ZZLIST000016";
+  const set = (id: string, isin: unknown, headers: HeadersInit = {}) =>
+    new Request(
+      `http://markets.test/api/v1/instruments/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ isin }),
+      },
+    );
+  const isinOf = (db: Db, id: string) =>
+    (
+      db.query("select isin from instruments where id = ?").get(id) as {
+        isin: string | null;
+      }
+    ).isin;
+
+  test("an admin sets and clears it, checked as a trade's is", async () => {
+    const t = await setup();
+    share(t.db, "XETRA", "AAA", "GER");
+    const handle = admin(t);
+    const res = await handle(set("XETRA:AAA", LISTED.toLowerCase()));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      input: "XETRA:AAA",
+      id: "XETRA:AAA",
+      isin: LISTED,
+    });
+    expect(isinOf(t.db, "XETRA:AAA")).toBe(LISTED);
+    const cleared = await handle(set("XETRA:AAA", null));
+    expect(((await cleared.json()) as any).isin).toBeNull();
+    expect(isinOf(t.db, "XETRA:AAA")).toBeNull();
+    // a typo, a missing field and an unknown key are refused, nothing set
+    expect(
+      (await handle(set("XETRA:AAA", `${LISTED.slice(0, -1)}7`))).status,
+    ).toBe(400);
+    const none = await handle(
+      new Request("http://markets.test/api/v1/instruments/XETRA%3AAAA", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
+    expect(none.status).toBe(400);
+    expect((await handle(set("XETRA:NOPE", LISTED))).status).toBe(404);
+    expect(isinOf(t.db, "XETRA:AAA")).toBeNull();
+    expect(t.calls.urls).toHaveLength(0);
+  });
+
+  test("any other login is refused", async () => {
+    const t = await setup();
+    share(t.db, "XETRA", "AAA", "GER");
+    const handle = admin(t);
+    t.db
+      .query(
+        "insert into users (id, name, role, created_at) values ('ana', 'Ana', 'member', 0)",
+      )
+      .run();
+    const person = await handle(
+      set("XETRA:AAA", LISTED, {
+        cookie: cookieFor(t.db, t.clock.now(), "ana", null),
+      }),
+    );
+    expect(person.status).toBe(403);
+    const agent = await handle(
+      set("XETRA:AAA", LISTED, { authorization: `Bearer ${READ_KEY}` }),
+    );
+    expect(agent.status).toBe(403);
+    expect(isinOf(t.db, "XETRA:AAA")).toBeNull();
   });
 });
 

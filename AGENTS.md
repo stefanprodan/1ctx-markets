@@ -3,7 +3,8 @@
 A self-hosted market data server for AI agents. It syncs free market
 data (Yahoo and the CFTC's Commitments of Traders reports, and
 optionally FRED, Finnhub, Massive, SEC EDGAR and the Bucharest Stock
-Exchange's own feed) into one SQLite file, computes
+Exchange's own feed) into one SQLite file, reads Tradegate's live
+quote for Xetra listings on request, computes
 signals, evaluates price rules, and serves them over the Model Context
 Protocol (MCP, Streamable HTTP) and a REST API under `/api/v1` with an
 OpenAPI spec, both behind the admin key or agents' own keys. It holds
@@ -94,6 +95,7 @@ src/sources/                what every source shares, each provider under it
   massive/                  news
   edgar/                    SEC filings, their flags, events' filed_at
   cftc/                     the CFTC's positioning reports, always on, held in memory
+  tradegate/                Tradegate's live quote for a Xetra listing's extended price, never stored
 src/signals/                daily, weekly, live and relative signals
 src/rules/                  alert conditions, evaluation, triggers
 src/push/                   fired alerts as Web Push: encryption, VAPID, the send pass, devices
@@ -157,6 +159,7 @@ the same commit as the code that changes a rule.
 | `docs/fred.md` | FRED: its key, its call limit, answer checks, series as instruments, bars, the daily job, attribution |
 | `docs/bvb.md` | the Bucharest feed: its pages and chart feed, parsing, the session, quotes, bars and its rescale checks, resolution, switching sources |
 | `docs/cftc.md` | the CFTC's Commitments of Traders reports: always on, the market list and its job, calls and answer checks, held in memory only, the read |
+| `docs/tradegate.md` | Tradegate: always on, the ISIN an instrument carries and how it is set, the call and its cache, parsing, the fixed hours and the sessions, failures |
 | `docs/edgar.md` | SEC EDGAR: its contact line, its call limit, the ticker map, kept forms and their checks, foreign filers, the daily pass, the filing flags, events' `filed_at` |
 | `docs/research.md` | Finnhub research and earnings events, Massive news, their keys and budgets, the `research` and `events` tools, the research route's contents |
 | `docs/signals.md` | the daily and weekly signals, final and live rows, reading, relative return |
@@ -192,8 +195,10 @@ the same commit as the code that changes a rule.
   one exception is World markets (`src/market/world.ts`), a built-in
   list of world indices, commodities, currencies and crypto that is
   always tracked and fills a new person's Home.
-  Every source but Yahoo and the CFTC is optional: off without its key
-  file, or without its `--source` flag for a keyless one.
+  Every source but Yahoo, the CFTC and Tradegate is optional: off
+  without its key file, or without its `--source` flag for a keyless
+  one. Tradegate's 07:30 to 22:00 Berlin is the one fixed window: it
+  publishes no hours (`docs/tradegate.md`).
 - **A change that adds or renames a tool, an argument or an answer
   field an agent chooses by updates the server instructions**
   (`src/server/instructions.ts`, `docs/tools.md`) in the same PR: they

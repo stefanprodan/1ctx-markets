@@ -42,6 +42,7 @@ All free. The keyed ones turn on when their key file is present:
 |---|---|
 | Yahoo Finance | quotes, history, ETF holdings (always on) |
 | CFTC | futures positioning (always on) |
+| Tradegate | live price, bid and ask of a Xetra listing with an ISIN, 07:30 to 22:00 Berlin (always on) |
 | [Finnhub](https://finnhub.io/register) | US shares: fundamentals, analysts, earnings, insiders |
 | [Massive](https://massive.com) | US shares and ETFs: news with sentiment |
 | [FRED](https://fred.stlouisfed.org/docs/api/api_key.html) | economic series such as Treasury yields |

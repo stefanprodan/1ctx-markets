@@ -5681,7 +5681,7 @@ describe("Home's pre- and post-market moves", () => {
   });
 
   test("a move from another day names the day", () => {
-    const later = Date.parse(PRE.time) + 3 * 86_400_000;
+    const later = Date.parse(PRE.time!) + 3 * 86_400_000;
     const m = extMove(PRE, null, later)!;
     expect(m.title).toMatch(/^Pre-market 207\.38 · [A-Z][a-z]{2} \d\d:\d\d$/);
   });

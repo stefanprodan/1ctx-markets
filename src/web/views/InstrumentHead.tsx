@@ -20,6 +20,7 @@ export function Head({ detail, now }: { detail: Detail; now: number }) {
       name={
         <>
           {about(detail.instrument)}
+          {detail.isin ? ` · ${detail.isin}` : ""}
           <span class="faint"> · {priceState(detail, now)}</span>
         </>
       }
