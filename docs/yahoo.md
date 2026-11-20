@@ -460,6 +460,10 @@ Phrases from Yahoo (`docs/sources.md`, Refusals):
   one call a night on a trading day, at most hourly over a weekend or
   holiday. Only quote's `extended` reads it, inside the call
   (`docs/tools.md`); no job polls the extended windows.
+- **A Xetra listing with an ISIN reads its chart for its regular
+  windows only**: Xetra's day and next open while it is closed, which
+  split Tradegate's hours into sessions (`docs/tradegate.md`); its
+  price is Tradegate's.
 
 ## The per-instrument lock
 

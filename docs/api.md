@@ -29,6 +29,7 @@ MCP tools copied onto paths.
 | `GET /screener?type=&screen=&sort=&order=&page_size=&page_token=` | session | `screener()` | the web UI's Screener page: a page of one ready-made screen over the instruments kept up to date, with every screen's `counts` and the stored `kinds` (below) |
 | `GET /instruments/{symbol}` | read | `instrument()` | the instrument, what tracks it, its full quote and a fund's `top_holdings`; a read (below) |
 | `DELETE /instruments/{symbol}` | admin | `deleteOne()` | 204; 409 with `rules` (`docs/admin.md`) |
+| `PATCH /instruments/{symbol}` | admin | `isinOne()` | `{isin}` sets or (null) takes off a listing's ISIN; `input`, `id`, `isin` (`docs/admin.md`) |
 | `POST /instruments/{symbol}/refetch` | admin | `refetchOne()` | `input`, `id`, `parts[]` (`docs/admin.md`) |
 | `GET /instruments/{symbol}/stored` | session | `storedCheck()` | `input`, `stored`: whether a read answers from the database or fetches the symbol first (`docs/admin.md`) |
 | `DELETE /instruments/{symbol}/live` | session | `liveRelease()` | 204: the page left frees the caller's hold on its fast place, the place itself once no other login or the admin key holds it; asks no source, and an instrument not held answers the same (`docs/yahoo.md`, "Fast quotes") |

@@ -207,6 +207,7 @@ const HOOD = {
   change: round(HOOD_LAST - HOOD_CLOSE),
   change_percent: round(((HOOD_LAST - HOOD_CLOSE) / HOOD_CLOSE) * 100),
   time: "2026-10-27T21:22:50Z",
+  source: "yahoo" as const,
 };
 
 const against = (session: "pre" | "post", at: number, time: string) => ({
@@ -215,6 +216,7 @@ const against = (session: "pre" | "post", at: number, time: string) => ({
   change: round(at - HOOD_CLOSE),
   change_percent: round(((at - HOOD_CLOSE) / HOOD_CLOSE) * 100),
   time,
+  source: "yahoo" as const,
 });
 // overnight the evening's last post bar stands; then the morning's pre bar
 const HOOD_OVERNIGHT = against("post", 87.3423, "2026-10-27T23:59:59Z");
@@ -547,6 +549,7 @@ describe("the latest extended bar", () => {
       change: round(close - HOOD_CLOSE),
       change_percent: round(((close - HOOD_CLOSE) / HOOD_CLOSE) * 100),
       time: iso(result.timestamp[last] * 1000),
+      source: "yahoo",
     });
   });
 

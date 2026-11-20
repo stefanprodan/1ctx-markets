@@ -16,7 +16,8 @@ import type { Finnhub } from "../sources/finnhub/client.ts";
 import { type Hooks, NO_HOOKS } from "../sources/finnhub/store.ts";
 import type { Fred } from "../sources/fred/client.ts";
 import type { Massive } from "../sources/massive/client.ts";
-import type { OptionChain, Yahoo } from "../sources/yahoo/client.ts";
+import type { Tradegate, TradegateQuote } from "../sources/tradegate/client.ts";
+import type { OptionChain, Window, Yahoo } from "../sources/yahoo/client.ts";
 import { type FastQuotes, fastQuotes } from "../sources/yahoo/fast.ts";
 import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
@@ -42,6 +43,8 @@ export type Markets = {
   edgar: Edgar | null;
   // the app always has it; null only where reads are built without it
   cftc: CftcReads | null;
+  // the app always has it; null only where reads are built without it
+  tradegate: Tradegate | null;
   hooks: Hooks;
   rules: RuleHooks;
   tracking: Tracking;
@@ -54,6 +57,7 @@ export type Markets = {
   extended: ExtendedCache;
   options: OptionsCache;
   positioning: PositioningCache;
+  tradegateQuotes: TradegateCache;
   // REST's rule: a bare symbol is Yahoo's listing, the feed's only when
   // Yahoo has none; MCP answers both as candidates
   yahooFirst: boolean;
@@ -70,6 +74,7 @@ export function markets(options: {
   massive?: Massive | null;
   edgar?: Edgar | null;
   cftc?: CftcReads | null;
+  tradegate?: Tradegate | null;
   hooks?: Hooks;
   rules?: RuleHooks;
   log: Log;
@@ -102,6 +107,7 @@ export function markets(options: {
       options.cftc == null
         ? null
         : { client: options.cftc.client.failFast(), list: options.cftc.list },
+    tradegate: options.tradegate?.failFast() ?? null,
     hooks: options.hooks ?? NO_HOOKS,
     rules: options.rules ?? NO_RULES,
     tracking: options.tracking ?? BY_USE,
@@ -112,18 +118,35 @@ export function markets(options: {
     extended: new Map(),
     options: new Map(),
     positioning: new Map(),
+    tradegateQuotes: new Map(),
     yahooFirst: false,
   };
 }
 
-export type Extended = {
-  session: "pre" | "post";
+type ExtendedPrice = {
   price: number | null;
   // from the regular close
   change: number | null;
   change_percent: number | null;
   time: string | null;
 };
+
+// Tradegate's adds its quote, the day's range and shares, and its own close
+export type Extended =
+  | (ExtendedPrice & { session: "pre" | "post"; source: "yahoo" })
+  | (ExtendedPrice & {
+      session: TradegateSession;
+      bid: number | null;
+      ask: number | null;
+      day_high: number | null;
+      day_low: number | null;
+      volume: number | null;
+      tradegate_close: number | null;
+      source: "tradegate";
+    });
+
+// pre, regular and post as Xetra trades; closed outside Tradegate's hours
+export type TradegateSession = "pre" | "regular" | "post" | "closed";
 
 // opens: the next regular start once the source names it, while closed
 export type ExtendedRead = (
@@ -145,7 +168,15 @@ export type ExtendedCache = Map<
     read: ExtendedRead;
     points: ExtendedPoint[];
     hours: ExtendedHours[];
+    // the regular windows the chart names, for Tradegate's sessions
+    days: Window[];
   }
+>;
+
+// by ISIN, for HELD_MS from its fetch
+export type TradegateCache = Map<
+  string,
+  { until: number; answer: TradegateQuote }
 >;
 
 // a day's pre-market start to its post-market end

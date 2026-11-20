@@ -86,6 +86,37 @@ const extendedReason = (description: string): Schema =>
   );
 const EXTENDED_NULL = "Why `extended` is null; null when it holds a price.";
 
+// the listing's own pre or post price, or Tradegate's for a Xetra listing
+const extendedPrice = object(
+  {
+    session: note(
+      values(["pre", "post", "regular", "closed"]),
+      "`pre` or `post`; Tradegate's also `regular` while Xetra trades and `closed` outside 07:30 to 22:00 Berlin or on a day Xetra does not trade, with its last values.",
+    ),
+    price: nnum,
+    change: note(
+      nnum,
+      "From the regular close; Tradegate's from Xetra's previous close before and during the session, today's close after it.",
+    ),
+    change_percent: nnum,
+    time: note(
+      nstr,
+      "The bar's time, or when Tradegate's quote was fetched; while `closed`, its last close (22:00 Berlin).",
+    ),
+    source: note(
+      str,
+      "`tradegate`, else the listing's own price source, as the item's `source`.",
+    ),
+    bid: note(nnum, "Tradegate's only, as are the fields below."),
+    ask: nnum,
+    day_high: nnum,
+    day_low: nnum,
+    volume: note(nnum, "Shares traded on Tradegate today."),
+    tradegate_close: note(nnum, "Tradegate's own previous close, at 22:00."),
+  },
+  ["session", "price", "change", "change_percent", "time", "source"],
+);
+
 export const DEADLINE_S = CALL_MS / 1000;
 
 const itemError = object({
@@ -654,15 +685,7 @@ export const schemas: Record<string, Schema> = {
   Quote: object(
     {
       ...brief,
-      extended: nullable(
-        object({
-          session: values(["pre", "post"]),
-          price: nnum,
-          change: nnum,
-          change_percent: nnum,
-          time: nstr,
-        }),
-      ),
+      extended: nullable(extendedPrice),
       extended_reason: extendedReason(EXTENDED_NULL),
       opens: note(
         nstr,
@@ -1356,6 +1379,10 @@ export const schemas: Record<string, Schema> = {
         "Who the prices are from, with a link to its site.",
       ),
       instrument: ref("InstrumentRow"),
+      isin: note(
+        nstr,
+        "The listing's ISIN once an admin or a trade set it; absent for a fund the owner prices, whose id holds it.",
+      ),
       intraday: note(
         bool,
         "Whether its source gives 5-minute closes (`/instruments/{symbol}/bars?interval=5m`).",
@@ -1399,16 +1426,8 @@ export const schemas: Record<string, Schema> = {
                 "The market's last regular session: `state` open or closed, `start` and `end` in UTC. Null for a series.",
               ),
               extended: note(
-                nullable(
-                  object({
-                    session: values(["pre", "post"]),
-                    price: nnum,
-                    change: nnum,
-                    change_percent: nnum,
-                    time: nstr,
-                  }),
-                ),
-                "Pre or post trading while the regular session is closed, as the quote tool's `extended`; null with the reason in `extended_reason`.",
+                nullable(extendedPrice),
+                "Pre or post trading while the regular session is closed, or a Xetra listing's Tradegate quote, as the quote tool's `extended`; null with the reason in `extended_reason`.",
               ),
               extended_reason: extendedReason(EXTENDED_NULL),
               opens: note(
@@ -1553,6 +1572,14 @@ export const schemas: Record<string, Schema> = {
   Stored: object({
     input: note(str, "The symbol as sent."),
     stored: bool,
+  }),
+  IsinArgs: object({
+    isin: note(nstr, "An ISIN, its check digit checked; null takes it off."),
+  }),
+  IsinSet: object({
+    input: note(str, "The symbol as sent."),
+    id: str,
+    isin: nstr,
   }),
   Live: object({
     input: note(str, "The symbol as sent."),

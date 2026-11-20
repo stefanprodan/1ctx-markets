@@ -125,6 +125,7 @@ Never run one from a test or CI.
 | `massive.ts` | the latest news and its next page, older news | `MASSIVE_KEY_FILE` or `source-massive.key` |
 | `edgar.ts` | the ticker map trimmed to the tests' symbols, two years of submissions per company (a bank's note prospectuses sampled), an unknown CIK | `EDGAR_KEY_FILE` or `source-edgar.key`, the contact line |
 | `cftc.ts` | both reports' market lists, a commodity market's and a consolidated financial market's weeks with the client's own queries, a list at its limit; a case name records one | none |
+| none | `test/fixtures/tradegate/`: one ETF's page refresh, compact with a comma string and indented without `refresh`, saved by hand from the browser; record a new one with curl | none |
 | `bvb.ts` | the Bucharest exchange's pages and chart feed, trimmed to the fragments that hold data; a case name records one | none; the page key is stripped |
 
 - **Calls are spaced and few** (`GAP_MS`), under each source's limit,

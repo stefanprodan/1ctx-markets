@@ -13,6 +13,7 @@ import {
   deleteOne,
   instrument,
   instruments,
+  isinOne,
   liveCheck,
   liveRelease,
   pageSize,
@@ -1173,6 +1174,12 @@ function operator(admin: AdminDeps, world: World): Route[] {
       scope: "admin",
       handle: (_req, url, params, who) =>
         deleteOne(admin, who, url, params.symbol!),
+    },
+    {
+      method: "PATCH",
+      path: "/instruments/{symbol}",
+      scope: "admin",
+      handle: (req, url, params) => isinOne(admin, req, url, params.symbol!),
     },
     {
       method: "GET",

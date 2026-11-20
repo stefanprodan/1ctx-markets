@@ -68,6 +68,9 @@ export const EXTENDED = {
   failed: "fetch failed",
   // history's points held, none in a session it answers
   outside: "none in the sessions answered",
+  // a Xetra listing's extended price is Tradegate's, read by its ISIN
+  noIsin: "no ISIN for Tradegate",
+  notListed: "not on Tradegate",
 } as const;
 
 export type ExtendedReason = (typeof EXTENDED)[keyof typeof EXTENDED];

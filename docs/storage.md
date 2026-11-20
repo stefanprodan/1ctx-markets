@@ -90,6 +90,12 @@ in `src/app.ts`.
   key** (`malformed answer`): the source moved the listing, which only
   a re-keying migration fixes. Name and currency keep the stored value
   when an answer omits them.
+- **An instrument may carry an ISIN** (`isin`, nullable), set by
+  hand through `portfolio_trade` or an admin, never by a source or a
+  seed, and read only by a Xetra listing's extended quote and its page
+  (`readIsin()`, `writeIsin()`, `docs/tradegate.md`). Two listings of
+  one fund share it, so it is not unique; a fund the owner prices keeps
+  it in its key.
 - **Each instrument has a unit (`UNITS`), and an unknown one stays
   `unknown`.** Yahoo's `INDEX` is `index_points`, ^VIX's and ^TNX's too,
   a yield index's points being its yield in percent; its `FUTURE` holds
@@ -202,9 +208,11 @@ in `src/app.ts`.
 | `not reported by its source` | `readExtended` | a listing not priced by Yahoo |
 | `no price since the regular close` | `readExtended` | no pre or post bar has a price since the last regular close |
 | `regular session open` | `readExtended` | the stored session or the chart's regular window holds now |
-| `not fetched in time` | `readExtended` | the chart missed the call's deadline |
-| `fetch failed` | `readExtended` | the chart call failed |
+| `not fetched in time` | `readExtended` | the chart, or Tradegate's page, missed the call's deadline |
+| `fetch failed` | `readExtended` | the chart call failed, or Tradegate's page did or held no last price |
 | `none in the sessions answered` | `extendedOut` | history's `5m`: the read held points of other sessions only |
+| `no ISIN for Tradegate` | `readExtended` | a Xetra listing with no ISIN, so Tradegate cannot be asked |
+| `not on Tradegate` | `readExtended` | Tradegate answered an empty page for its ISIN |
 
 - **`quote overdue` follows when a quote was last due**
   (`lastQuoteDue`): now while the market trades (always for crypto),

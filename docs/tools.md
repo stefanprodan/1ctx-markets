@@ -218,7 +218,14 @@ area's own tools are in its doc.
   (`docs/yahoo.md`), kept in memory for a quote period
   (`m.extended`), so the thin market is never fresher than the regular
   one. Never stored: signals, bars, movers, screen, history and alerts
-  read the regular session only.
+  read the regular session only. Each `extended` names its `source`.
+- **A Xetra listing's `extended` is Tradegate's** (`docs/tradegate.md`)
+  once it has an ISIN: the live price with `bid`, `ask`, `day_high`,
+  `day_low`, `volume` and `tradegate_close`, all day and in Xetra's
+  regular session too, `session` `pre`, `regular`, `post` or
+  `closed`, held 15 seconds per ISIN. Without an ISIN it answers `no
+  ISIN for Tradegate`. The tool text names no broker: Tradegate is the
+  venue some brokers execute on and a proxy for others' Xetra prices.
 - **`opens` comes with `extended`**: while closed, the next regular
   start in UTC from the same chart (`nextOpen()`), once Yahoo names it
   at its pre window's start, indexes included; null while open, for

@@ -1,0 +1,10 @@
+{
+  "recordedAt": "2026-11-20T13:07:00.000Z",
+  "request": {
+    "method": "GET",
+    "url": "https://www.tradegatebsx.com/refresh.php?isin=IE00BFMXXD54"
+  },
+  "status": 200,
+  "headers": {},
+  "body": "{\"bid\":125.325,\"ask\":125.345,\"bidsize\":600,\"asksize\":1000,\"delta\":-1.04,\"stueck\":60100,\"umsatz\":7576629,\"avg\":126.067,\"executions\":10302,\"last\":125.345,\"high\":126.585,\"low\":\"125,30\",\"close\":126.66,\"refresh\":10}"
+}

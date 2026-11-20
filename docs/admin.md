@@ -345,6 +345,16 @@ No outbox: a link's email is sent directly, after the answer for an ask, before 
 - **The answer is counts only**: `asked` (`fetched` plus `failed`) and
   `left_out` add up to the failing scopes; status names which.
 
+## ISIN
+
+- **`PATCH /api/v1/instruments/{symbol}` with `{"isin": ...}` sets,
+  replaces or (null) takes off a stored listing's ISIN**, by which a
+  Xetra listing's extended quote reads Tradegate (`docs/tradegate.md`).
+  Admin only; stored only, never fetched, named as refetch names it.
+  The ISIN is checked as a fund's is (`isinArg()`); a fund the owner
+  prices is not found here, its ISIN being its key. Answers `input`,
+  `id` and `isin`. The instrument route answers it as `isin`.
+
 ## Delete
 
 - **Stored only, never fetched**, named as refetch names it; 204 with

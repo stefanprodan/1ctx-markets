@@ -14,7 +14,7 @@ import {
 } from "../api/http.ts";
 import { dailyRange } from "../market/bars.ts";
 import { iso } from "../market/format.ts";
-import { readInstrument } from "../market/instruments.ts";
+import { readInstrument, readIsin, writeIsin } from "../market/instruments.ts";
 import { checkAgainAt, JOBS } from "../market/stale.ts";
 import { dashboardInstruments, trackedIds } from "../market/tracking.ts";
 import { ArgError, fields } from "../operations/args.ts";
@@ -26,6 +26,7 @@ import {
 } from "../operations/funds.ts";
 import { hasIntraday } from "../operations/intraday.ts";
 import type { Markets } from "../operations/markets.ts";
+import { isinArg } from "../operations/portfolio.ts";
 import { parseQuote, quoteRows } from "../operations/quote.ts";
 import {
   type Inline,
@@ -110,6 +111,7 @@ const SOURCE_LABELS: Record<string, string> = {
   massive: "Massive",
   edgar: "SEC EDGAR",
   cftc: "CFTC Commitments of Traders",
+  tradegate: "Tradegate",
 };
 
 const SOURCE_SHORT: Record<string, string> = {
@@ -120,6 +122,7 @@ const SOURCE_SHORT: Record<string, string> = {
   massive: "Massive",
   edgar: "EDGAR",
   cftc: "CFTC",
+  tradegate: "Tradegate",
 };
 
 // the price sources' own sites, for the instrument page's credit
@@ -144,6 +147,7 @@ const SOURCE_MARKS: Record<string, string> = {
   massive: "M",
   edgar: "SEC",
   cftc: "CFTC",
+  tradegate: "TG",
 };
 
 // how an operator turns on a source that needs a key
@@ -698,6 +702,7 @@ export async function instrument(m: Markets, who: Who, url: URL, raw: string) {
     ...(stored.source === FRED ? { attribution: ATTRIBUTION } : {}),
     credit: creditOf(stored.source),
     instrument: listRow(m, owner, m.clock.now())(stored),
+    isin: readIsin(m.db, stored.id),
     intraday: hasIntraday(stored),
     quote: failure === null ? item : null,
     error:
@@ -853,6 +858,35 @@ export async function refetchOne(
     id: instrument.id,
     parts: results.map(({ symbol: _, ...r }) => r),
   });
+}
+
+// a listing's ISIN, by which a Xetra listing's extended quote reads
+// Tradegate; a fund the owner prices keeps its own key
+export async function isinOne(
+  d: AdminDeps,
+  req: Request,
+  url: URL,
+  raw: string,
+): Promise<Response> {
+  noQuery(url);
+  const { input, instrument } = storedOf(d.m, raw);
+  const read = await readBody(req, MAX_BODY_BYTES);
+  if (read instanceof Response) return read;
+  const b = fields(read.body, ["isin"]);
+  if (b.isin === undefined) {
+    throw new ArgError("isin is an ISIN, or null to take it off");
+  }
+  const isin = isinArg(b.isin);
+  if (instrument === null || instrument.source === FUND_SOURCE) {
+    return noInstrument(input);
+  }
+  const id = instrument.id;
+  const done = await d.m.writer.write((db) => {
+    recheck(db, "admin");
+    return writeIsin(db, id, isin, d.m.clock.now());
+  });
+  if (!done) return noInstrument(input);
+  return json({ input, id, isin });
 }
 
 // every row of one instrument in one write, never another's; a rule
