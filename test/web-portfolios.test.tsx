@@ -258,6 +258,7 @@ const trade = (more: Partial<TradeRow> = {}): TradeRow => ({
   price: 80,
   fees: 1.5,
   currency: "EUR",
+  listing_price: 80,
   broker: "North",
   note: null,
   entered_by: "casey-agent",

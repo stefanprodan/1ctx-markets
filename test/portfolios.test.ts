@@ -282,13 +282,40 @@ describe("currencies", () => {
       currency: "EUR",
     });
     expect(done).toMatchObject({
-      trade: { currency: "EUR", listing_currency: "USD" },
+      trade: {
+        currency: "EUR",
+        listing_currency: "USD",
+        listing_price: 1150,
+      },
     });
     const c = row(await holdingsOf(m), "CRYPTO:CCC-USD");
     expect(c.currency).toBe("USD");
     expect(c.cost).toBe(money(1010 * 1.15));
     expect(c.paid).toEqual([{ currency: "EUR", amount: 1010 }]);
     expect(c.value).toBe(2000);
+  });
+
+  test("a trade's listing price is null with no rate, its own price in its own currency", async () => {
+    const { m } = await setup();
+    await buy(m, {
+      portfolio: "Coins",
+      symbol: "CRYPTO:CCC-USD",
+      quantity: 1,
+      price: 1000,
+      currency: "RON",
+    });
+    await buy(m, { quantity: 2, price: 100 });
+    const list = readTradeList(m, OPERATOR, {
+      portfolio: null,
+      broker: null,
+      symbol: null,
+      from: null,
+      to: null,
+      removed: false,
+    }) as { symbol: string; listing_price: number | null }[];
+    const by = new Map(list.map((t) => [t.symbol, t.listing_price]));
+    expect(by.get("CRYPTO:CCC-USD")).toBeNull();
+    expect(by.get("US:AAA")).toBe(100);
   });
 
   test("totals are per currency, never summed across them", async () => {

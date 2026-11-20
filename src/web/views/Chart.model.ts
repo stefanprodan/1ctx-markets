@@ -716,18 +716,19 @@ export function monthlyShares(
 
 // a trade on the bar of its day, or of the last bar before it: a week's
 // bar is dated its Monday; one bar holds one buy and one sell at most,
-// each at its trades' price weighted by quantity
+// each at its trades' price weighted by quantity, in the chart's
+// currency; null when a trade has no rate to it, never a sum of two
 export type TradeMark = {
   time: string;
   side: "buy" | "sell";
-  price: number;
+  price: number | null;
   quantity: number;
 };
 type Trade = {
   date: string;
   side: "buy" | "sell";
   quantity: number;
-  price: number;
+  price: number | null;
 };
 export function tradeMarks(
   times: readonly string[],
@@ -758,8 +759,11 @@ function summed(placed: readonly (Trade & { at: string })[]): TradeMark[] {
       cost: 0,
     };
     m.quantity += t.quantity;
-    m.cost += t.quantity * t.price;
-    m.price = m.quantity > 0 ? m.cost / m.quantity : t.price;
+    if (t.price === null || m.price === null) m.price = null;
+    else {
+      m.cost += t.quantity * t.price;
+      m.price = m.quantity > 0 ? m.cost / m.quantity : t.price;
+    }
     out.set(key, m);
   }
   return [...out.values()]

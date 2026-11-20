@@ -215,6 +215,8 @@ export type TradeRow = {
   price: number;
   fees: number;
   currency: string;
+  // the price in the listing's currency on its day; null with no rate
+  listing_price: number | null;
   // percent_of_par: the price is a percent of face
   unit?: string | null;
   broker: string | null;
