@@ -52,6 +52,10 @@
   .pos-gain {
     font-size: var(--text-small);
   }
+  .pos-since {
+    margin-left: var(--space-2);
+    font-size: var(--text-small);
+  }
   .pos-more {
     margin-top: var(--space-2);
   }

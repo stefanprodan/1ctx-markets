@@ -41,7 +41,11 @@ import {
   positionOf,
 } from "../src/web/views/InstrumentPosition.model.ts";
 import { PositionCard } from "../src/web/views/InstrumentPosition.tsx";
-import { gainOf, PositionsBody } from "../src/web/views/Positions.tsx";
+import {
+  gainOf,
+  PositionsBody,
+  sinceBuy,
+} from "../src/web/views/Positions.tsx";
 
 const NOW = Date.parse("2026-11-01T12:00:00Z");
 
@@ -434,6 +438,35 @@ describe("the instrument page's position drawer", () => {
     expect(html).toContain("140.00 USD");
     expect(html).toContain("2 Jun 2023 · North");
     expect(html).not.toContain("4 Sept 2023");
+  });
+
+  test("a buy shows its move to the price now; a sell and a reward do not", () => {
+    const trades = [
+      trade(1, { date: "2023-03-01", listing_price: 40 }),
+      trade(2, { date: "2023-04-01", listing_price: 62.5 }),
+      trade(3, { date: "2023-05-01", side: "sell", listing_price: 40 }),
+      trade(4, { date: "2023-06-01", price: 0, listing_price: 0 }),
+    ];
+    const html = render(
+      <PositionsBody h={two} trades={trades} failed={false} hide={true} />,
+    );
+    expect(html).toContain('<span class="num up pos-since">+25.00%</span>');
+    expect(html).toContain('<span class="num down pos-since">−20.00%</span>');
+    expect(rows(html, "num up pos-since")).toBe(1);
+    expect(rows(html, "num down pos-since")).toBe(1);
+    // fills weigh by quantity, against the price in the listing's currency
+    expect(
+      sinceBuy(
+        [
+          trade(1, { quantity: 1, price: 9, listing_price: 30 }),
+          trade(2, { quantity: 3, price: 9, listing_price: 50 }),
+        ],
+        { price: 54 },
+      ),
+    ).toBeCloseTo(20);
+    // a fill with no rate or no price now has no move
+    expect(sinceBuy([trade(1, { listing_price: null })], two)).toBeNull();
+    expect(sinceBuy([trade(1)], { price: null })).toBeNull();
   });
 
   test("twenty orders, then Show more", () => {
