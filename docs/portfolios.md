@@ -580,6 +580,11 @@ in `test/fixtures/mcp/answers.json`; the rules behind them follow.
   with `past: true`, and `removed` only when taken off.
 - **A `portfolio` named beside a trade's remove or restore is
   checked** to be the trade's, since agents pass one out of habit.
+- **A listing's ISIN rides on `portfolio_trade`**: add with `isin`
+  beside a listing's `symbol` keeps it on the instrument in the trade's
+  own write, refused when another is stored; `set` with `symbol` and
+  `isin` sets or replaces it, null takes it off. Instruments are
+  shared, so the ISIN is too; it is no holding (`docs/tradegate.md`).
 - **One handle per row.** A holdings row's instrument is `symbol` in
   the tool's answer: what `quote` takes, or a fund's key, null for
   cash and a bond with no listing; trades answer `symbol` too. The

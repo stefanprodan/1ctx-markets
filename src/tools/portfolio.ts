@@ -43,7 +43,7 @@ import { day, next, schema, symbol, type Tool } from "./schema.ts";
 const readDescription = (writes: boolean) =>
   `What the owner holds and trades: portfolios, holdings with totals, trades, and each cash or bond row's history. For "my stocks", "my ETF", "my portfolio" or a named one: holdings first, then its symbols to quote, history, research. list: portfolios, brokers, markets, funds, display currency, time zone. holdings: portfolio, broker; totals per currency, currency converts. A row's symbol is what quote takes (a fund's key), null for cash and an unlisted bond. position is a cash or bond row's id${writes ? " for portfolio_cash or portfolio_bond" : ""}, null for a share, ETF, crypto or fund${writes ? ", which change through their trades" : ""}, and on a merged bond, each purchase's in parts. Cash is dry_powder (ready to invest) or reserve. as_of: a bond's purchase date, a fund's price date. removed true adds the ${MAX_REMOVED} latest removed cash and bond rows. price: the listing's, see fetched_at. trades: portfolio, broker, symbol, from, to, removed${writes ? "; a trade's id is what portfolio_trade removes" : ""}. history: position. next pages.`;
 
-const TRADE = `Records a buy or sell of a share, ETF, crypto or fund; remove or restore a trade by its id (from trades). add: symbol as quote takes it, or a fund by isin, its key as symbol (fund:<ISIN>) or name; side; quantity, or all: true to sell all held; price or total (what left or reached the account, fees in), neither: the live price; fees, date (default today), currency paid, broker (one listed), portfolio (needed when several), note. A fund: one trade per confirmation; its first buy makes it, with isin, name and currency; market: where its money is invested. The same trade within ${RETRY_MS / 60_000} minutes is refused as a repeat unless again: true, for two real equal fills. Removing all of a holding is removing its trades. Cash never moves with a trade: see portfolio_cash. Examples: {"action":"add","symbol":"AAPL","side":"buy","quantity":3,"price":190.5,"fees":1,"broker":"North"}; a first fund buy {"action":"add","isin":"ZZFUND000011","name":"Made Up Fund","side":"buy","quantity":12.5,"total":1000,"currency":"EUR"}.`;
+const TRADE = `Records a buy or sell of a share, ETF, crypto or fund; remove or restore a trade by its id (from trades); set an ISIN. add: symbol as quote takes it, or a fund by isin, its key as symbol (fund:<ISIN>) or name; side; quantity, or all: true to sell all held; price or total (what left or reached the account, fees in), neither: the live price; fees, date (default today), currency paid, broker (one listed), portfolio (needed when several), note. A fund: one trade per confirmation; its first buy makes it, with isin, name and currency; market: where its money is invested. The same trade within ${RETRY_MS / 60_000} minutes is refused as a repeat unless again: true, for two real equal fills. Removing all of a holding is removing its trades. Cash never moves with a trade: see portfolio_cash. Examples: {"action":"add","symbol":"AAPL","side":"buy","quantity":3,"price":190.5,"fees":1,"broker":"North"}; a first fund buy {"action":"add","isin":"ZZFUND000011","name":"Made Up Fund","side":"buy","quantity":12.5,"total":1000,"currency":"EUR"}.`;
 
 const CASH = `Adds, updates, removes or restores the owner's cash; all cash lives in Cash. A row is picked by position from holdings (removed true lists removed ones), and an update gives it a new position. dry_powder true: ready to invest at a broker; else reserve. add: name, amount, currency, broker, date, note, dry_powder, maturity (a term deposit's last day: from it, matured); the same name, broker and currency replaces that row. update: position and one or more of amount (the new balance), by (+/- a move), currency (of amount or by, converted), date, note (null clears), dry_powder, name, broker (null takes it off), maturity (null takes it off; a deposit rolled over gets its new day). A date before its as_of with amount alone saves a past balance. remove, restore: position. A buy paid from dry powder: holdings, then update that row with by: -(the total paid). Examples: {"action":"update","position":12,"note":"made-up note"}; {"action":"add","name":"Savings","amount":2500,"currency":"EUR","broker":"South"}.`;
 
@@ -206,7 +206,17 @@ export function parseTradeTool(input: unknown): PortfolioArgs {
     ids: ["trade"],
     flags: ["again", "all"],
   });
-  const action = actionOf(f, ["add", "remove", "restore"] as const);
+  const action = actionOf(f, ["add", "set", "remove", "restore"] as const);
+  if (action === "set") {
+    only(f, action, ["symbol", "isin"]);
+    if (f.isin === undefined) {
+      throw new ArgError("set takes isin; null takes it off");
+    }
+    if (typeof f.symbol === "string" && isFundKey(f.symbol)) {
+      throw new ArgError("a fund's ISIN is its key, fund:<ISIN>");
+    }
+    return { action, symbol: text(f.symbol, "symbol"), isin: isinArg(f.isin) };
+  }
   if (action !== "add") {
     // agents name the portfolio out of habit: checked, never needed
     only(f, action, ["trade", "portfolio"]);
@@ -233,17 +243,22 @@ export function parseTradeTool(input: unknown): PortfolioArgs {
   }
   const key = keyIsin(g.symbol);
   if (key === null && g.symbol !== undefined) {
-    if (g.isin !== undefined || g.name !== undefined) {
-      throw new ArgError(
-        "a trade names symbol, or a fund by isin or name, not both",
-      );
+    if (g.name !== undefined) {
+      throw new ArgError("a trade names symbol, or a fund by isin or name");
     }
     if (g.market !== undefined) {
       throw new ArgError(
         "market is a fund's, where its money is invested; a share's is its listing's",
       );
     }
-    return { action, kind: "trade", trade: parseTrade(g) };
+    const { isin, ...h } = g;
+    // the listing's own ISIN, stored on it
+    return {
+      action,
+      kind: "trade",
+      trade: parseTrade(h),
+      isin: isinArg(isin),
+    };
   }
   if (key !== null && g.isin !== undefined) {
     throw new ArgError("a fund is named by isin or symbol, not both");
@@ -517,9 +532,16 @@ export function portfolioTools(m: Markets, access: Access): Tool[] {
       description: TRADE,
       inputSchema: schema(
         {
-          action: { type: "string", enum: ["add", "remove", "restore"] },
+          action: {
+            type: "string",
+            enum: ["add", "set", "remove", "restore"],
+          },
           symbol,
-          isin: { type: "string" },
+          isin: {
+            type: ["string", "null"],
+            description:
+              "a fund's; beside a listing's symbol, its ISIN, kept on it (refused if another is); set, with a listing's symbol: sets or replaces it, null takes it off. A XETRA listing's extended quote reads Tradegate by it",
+          },
           name: { type: "string" },
           side: { type: "string", enum: ["buy", "sell"] },
           quantity: { type: "number", exclusiveMinimum: 0 },
