@@ -1,13 +1,16 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
-import { useSignal } from "@preact/signals";
+import { type Signal, useSignal } from "@preact/signals";
+import { useEffect, useRef } from "preact/hooks";
 import type { BoardSection } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { MenuButton } from "../ui/Menu.tsx";
-import { deleteLine } from "./Instrument.model.ts";
+import { deleteLine, isinInput } from "./Instrument.model.ts";
 
 export const SAID_MS = 2000;
+
+type Pane = "delete" | "home" | "isin" | null;
 
 export type HomeChoice = {
   // null until Home's layout is read, and while it is filling in
@@ -29,6 +32,8 @@ export function InstrumentMenu({
   onPrice,
   onRefetch,
   onDelete,
+  isin,
+  onIsin,
 }: {
   symbol: string;
   // refetch and delete are an admin's
@@ -44,13 +49,24 @@ export function InstrumentMenu({
   onPrice?: () => void;
   onRefetch?: () => void;
   onDelete?: () => void;
+  // a listing's ISIN, an admin's to set; null while none is
+  isin?: string | null;
+  // null once saved, else what to say
+  onIsin?: (isin: string | null) => Promise<string | null>;
 }) {
-  const pane = useSignal<"delete" | "home" | null>(null);
+  const pane = useSignal<Pane>(null);
+  const draft = useSignal("");
+  const said = useSignal<string | null>(null);
+  const saving = useSignal(false);
   // swapping the pane drops the clicked button, which the menu would
   // read as a click outside it
-  const swap = (ev: MouseEvent, to: "delete" | "home" | null) => {
+  const swap = (ev: MouseEvent, to: Pane) => {
     ev.stopPropagation();
     pane.value = to;
+    if (to === "isin") {
+      draft.value = isin ?? "";
+      said.value = null;
+    }
   };
   const sections = home?.sections ?? null;
   return (
@@ -102,6 +118,24 @@ export function InstrumentMenu({
               </button>
             </div>
           </div>
+        ) : pane.value === "isin" && onIsin ? (
+          <IsinPane
+            draft={draft}
+            said={said}
+            saving={saving}
+            onBack={(ev) => swap(ev, null)}
+            onSave={async (value) => {
+              saving.value = true;
+              const error = await onIsin(value);
+              saving.value = false;
+              if (error !== null) {
+                said.value = error;
+                return;
+              }
+              close();
+              pane.value = null;
+            }}
+          />
         ) : pane.value === "home" && home && sections !== null ? (
           <>
             <p class="ins-pick small faint">Add to</p>
@@ -197,6 +231,17 @@ export function InstrumentMenu({
                   <Icon name="redo" size={14} />
                   Refetch data
                 </button>
+                {onIsin && (
+                  <button
+                    type="button"
+                    class="menu-item"
+                    role="menuitem"
+                    onClick={(ev) => swap(ev, "isin")}
+                  >
+                    <Icon name="pencil" size={14} />
+                    Set ISIN
+                  </button>
+                )}
                 <button
                   type="button"
                   class="menu-item menu-item-danger"
@@ -212,5 +257,75 @@ export function InstrumentMenu({
         )
       }
     </MenuButton>
+  );
+}
+
+// checked as the server checks it, so a typo is said before a call
+function IsinPane({
+  draft,
+  said,
+  saving,
+  onBack,
+  onSave,
+}: {
+  draft: Signal<string>;
+  said: Signal<string | null>;
+  saving: Signal<boolean>;
+  onBack: (ev: MouseEvent) => void;
+  onSave: (isin: string | null) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  // the pane replaces the clicked item, so focus would stay on nothing
+  useEffect(() => input.current?.focus(), []);
+  return (
+    <form
+      class="ins-ask"
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        const v = isinInput(draft.value);
+        if (v === undefined) said.value = "Not a valid ISIN.";
+        else onSave(v);
+      }}
+    >
+      <label class="field">
+        <span class="label">ISIN</span>
+        <input
+          ref={input}
+          value={draft.value}
+          autocomplete="off"
+          spellcheck={false}
+          maxLength={12}
+          disabled={saving.value}
+          onInput={(e) => {
+            draft.value = (e.currentTarget as HTMLInputElement).value;
+            said.value = null;
+          }}
+        />
+      </label>
+      {said.value === null ? (
+        <p class="ins-ask-line small faint">Leave empty to remove it.</p>
+      ) : (
+        <p class="ins-ask-line small error" role="alert">
+          {said.value}
+        </p>
+      )}
+      <div class="ins-ask-foot">
+        <button
+          type="button"
+          class="btn btn-small"
+          disabled={saving.value}
+          onClick={onBack}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          class="btn btn-small btn-primary"
+          disabled={saving.value}
+        >
+          Save
+        </button>
+      </div>
+    </form>
   );
 }

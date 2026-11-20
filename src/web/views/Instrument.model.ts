@@ -1,6 +1,7 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isIsin } from "../../shared/isin.ts";
 import { SYMBOL } from "../app/paths.ts";
 import type { Detail, Fetched, Listed, Part, Section } from "../data/store.ts";
 import {
@@ -94,6 +95,13 @@ export function tradesToday(d: Detail): boolean {
   return !(traded < Date.parse(q.session.start ?? ""));
 }
 
+// what the ISIN field holds: null to take it off, undefined when not one
+export function isinInput(value: string): string | null | undefined {
+  const v = value.trim().toUpperCase();
+  if (v === "") return null;
+  return isIsin(v) ? v : undefined;
+}
+
 // pre or post trading beside the close, in the viewer's clock
 export function afterHours(d: Detail): {
   word: string;
@@ -102,7 +110,10 @@ export function afterHours(d: Detail): {
   change: Signed;
 } | null {
   const x = d.quote?.extended;
-  if (!x || x.price === null) return null;
+  // a Xetra listing's Tradegate price while Xetra trades is not shown
+  if (!x || x.price === null || x.time === null || x.session === "regular") {
+    return null;
+  }
   const row: Listed = {
     ...d.instrument,
     price: x.price,

@@ -570,7 +570,13 @@ export function extMove(
   row: Listed | null,
   now: number,
 ): ExtMove | null {
-  if (x === undefined || x.price === null || x.change_percent === null) {
+  if (
+    x === undefined ||
+    x.price === null ||
+    x.change_percent === null ||
+    x.time === null ||
+    x.session === "regular"
+  ) {
     return null;
   }
   const at = new Date(x.time);
@@ -585,7 +591,8 @@ export function extMove(
       ? figure(x.price)
       : price({ price: x.price, unit: row.unit, currency: row.currency });
   return {
-    session: x.session,
+    // Tradegate's closed hours hold the evening's last price
+    session: x.session === "pre" ? "pre" : "post",
     change: change(x),
     title: `${word} ${value} · ${when}`,
   };

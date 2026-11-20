@@ -922,7 +922,12 @@ Portfolios page is the reference for each part.
   a future, a currency pair, a series or a listed bond.
 - **One More menu holds the page's actions**: Write analysis while the
   symbol has none (once its read has landed), and for an admin Refetch
-  data and Delete. Refetch asks every part `choices()` lists
+  data, Set ISIN and Delete. Set ISIN opens a small pane in the menu
+  with the ISIN field, checked as the server checks it (`isinInput()`),
+  empty to take it off (`PATCH /api/v1/instruments/{id}`); a fund the
+  owner prices gets no item. The head names the ISIN once set. A Xetra
+  listing's Tradegate price shows beside the close as After hours or
+  Pre-market, never while Xetra trades. Refetch asks every part `choices()` lists
   (`POST /api/v1/instruments/{id}/refetch`); a failure names the part
   in plain words, and a 404 reads as no longer stored. A delete a rule
   blocks (409 with `rules`) is refused, and a delete returns to the
