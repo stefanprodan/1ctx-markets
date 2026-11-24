@@ -61,7 +61,7 @@ export function sayLine(s: {
 }): string {
   if (s.checking) return "Signing in";
   if (s.error !== null) return s.error;
-  return `${s.resent ? "New code sent" : "Sent"} to ${s.email}`;
+  return `${s.resent ? "Code sent" : "Sent"} to ${s.email}`;
 }
 
 // the code was taken and the login opened, but who it is could not be
@@ -114,7 +114,7 @@ export function codeFlow(d: {
 
 // the longest the line under the boxes says for an address, held in its
 // place whatever it says, so the card never changes height
-export const holdLine = (email: string): string => `New code sent to ${email}`;
+export const holdLine = (email: string): string => `Code sent to ${email}`;
 
 // a call dropped while one is still running, so the sixth digit typed
 // and a fill landing together sign in once

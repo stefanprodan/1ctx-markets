@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { statSync } from "node:fs";
 import { join } from "node:path";
 import type { ServiceDefinition } from "../src/service/backend.ts";
 import {
@@ -15,6 +14,9 @@ import {
 } from "../src/service/launchd.ts";
 import { type FakeClock, fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
+import { tempDirs } from "./helpers/temp.ts";
+
+const tempDir = tempDirs();
 
 const HOME = "/home/u";
 const PLIST = "/home/u/Library/LaunchAgents/dev.1ctx.markets.plist";
@@ -299,7 +301,7 @@ describe("launchd backend", () => {
 describe("launchd files", () => {
   // umask is the process's, so no other test may run beside this one
   test.serial("the plist is 644 under a permissive umask", async () => {
-    const path = join(mkdtempSync(join(tmpdir(), "markets-plist-")), "a.plist");
+    const path = join(tempDir("markets-plist-"), "a.plist");
     const before = process.umask(0o002);
     try {
       await diskFiles.write(path, "<plist/>");

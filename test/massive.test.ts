@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
 import {
@@ -58,7 +57,10 @@ import {
   series,
 } from "./helpers/massive.ts";
 import { NOW } from "./helpers/sources.ts";
+import { tempDirs } from "./helpers/temp.ts";
 import { fakeFetch } from "./helpers/yahoo.ts";
+
+const tempDir = tempDirs();
 
 const HOUR_MS = 60 * MINUTE_MS;
 // no walk left unfinished
@@ -570,7 +572,7 @@ describe("massive source", () => {
   };
 
   test("off without a key file, and the start log says so", async () => {
-    const { a, db } = app(mkdtempSync(join(tmpdir(), "massive-off-")));
+    const { a, db } = app(tempDir("massive-off-"));
     try {
       expect(a.massive).toBeNull();
       expect(a.massiveJobs).toBeNull();
@@ -584,7 +586,7 @@ describe("massive source", () => {
   });
 
   test("on with a key file; the key never reaches a log line or a row", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "massive-on-"));
+    const dir = tempDir("massive-on-");
     writeFileSync(join(dir, "source-massive.key"), `${MASSIVE_KEY}\n`);
     const lines: string[] = [];
     const { a, db, clock } = app(dir, lines);

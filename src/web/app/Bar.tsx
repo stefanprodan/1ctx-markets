@@ -296,7 +296,7 @@ export function More({
           <SharedWithMe here={here} follow={close} />
           <Recent here={here} follow={close} max={RECENT_PHONE} />
           <div class="more-user">
-            <UserItems onSignedOut={close} />
+            <UserItems onClose={close} />
           </div>
         </nav>
       )}

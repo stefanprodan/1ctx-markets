@@ -2,14 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AdminError, runAdmin } from "../src/admin/cli.ts";
 import {
@@ -51,10 +44,13 @@ import { fakeClock } from "./helpers/clock.ts";
 import { drive, pacedOf } from "./helpers/drive.ts";
 import { FINNHUB_KEY, finnhubAnswer } from "./helpers/finnhub.ts";
 import { gate, NOW, sources } from "./helpers/sources.ts";
+import { tempDirs } from "./helpers/temp.ts";
 import { bar, instrument, listing, quote, world } from "./helpers/world.ts";
 import type { Recorded } from "./helpers/yahoo.ts";
 
-const tempDir = () => mkdtempSync(join(tmpdir(), "markets-admin-"));
+const temp = tempDirs();
+
+const tempDir = () => temp("markets-admin-");
 
 const count = (db: Db, sql: string, ...args: string[]) =>
   (db.query(sql).get(...args) as { n: number }).n;

@@ -295,7 +295,7 @@ export function PersonDetails({
         items.length === 0 ? undefined : asking.value === "remove" ? (
           removes.value
         ) : asking.value === "signout" ? (
-          "Ends their sign-ins on every device. Their data stays."
+          "Ends their sign-ins on every device and removes their passkeys. Their data stays."
         ) : (
           <MenuButton
             label={`More for ${person.name}`}

@@ -46,6 +46,49 @@
     width: 100%;
     height: 36px;
   }
+  /* Sign in and its ways' menu, one control split by a hairline */
+  .signin-action {
+    position: relative;
+    display: flex;
+    gap: 1px;
+  }
+  /* the ways' menu as wide as the button and its arrow together */
+  .signin-action .menu-at {
+    position: static;
+  }
+  .signin-action .signin-go {
+    flex: 1;
+    width: auto;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .signin-spin {
+    width: var(--icon-small);
+    height: var(--icon-small);
+  }
+  .signin-action .signin-pick {
+    width: 36px;
+    height: 36px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+  .signin-step {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .signin-step-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: 600;
+  }
+  .signin-hint {
+    margin: 0;
+  }
+  .signin-skip {
+    align-self: center;
+  }
   .signin-boxes {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -94,12 +137,5 @@
   }
   .signin-say-hold {
     visibility: hidden;
-  }
-  .signin-alts {
-    display: flex;
-    justify-content: space-between;
-  }
-  .signin-switch {
-    color: var(--faint);
   }
 }

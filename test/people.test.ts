@@ -7,8 +7,7 @@
 
 import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AdminError } from "../src/admin/cli.ts";
 import { runKeys } from "../src/admin/keys-cli.ts";
@@ -53,7 +52,10 @@ import { MIGRATIONS } from "../src/storage/db/migrations/index.ts";
 import { ADMIN_KEY, api, cookieFor, READ_KEY } from "./helpers/api.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
+import { tempDirs } from "./helpers/temp.ts";
 import { instrument, NOW, quote, world } from "./helpers/world.ts";
+
+const tempDir = tempDirs();
 
 const HOST = "http://markets.test";
 const PASSWORD = "made-up-smtp-password-0123456789";
@@ -70,7 +72,7 @@ const ANA = "ana@example.com";
 
 // a secrets directory of its own, the password in it unless left out
 function secretsDir(password = true): string {
-  const dir = join(mkdtempSync(join(tmpdir(), "markets-people-")), "secrets");
+  const dir = join(tempDir("markets-people-"), "secrets");
   mkdirSync(dir, { mode: 0o700 });
   if (password) writeFileSync(join(dir, "email-test.key"), PASSWORD);
   return dir;
@@ -468,7 +470,7 @@ describe("using a link", () => {
     expect(t.db.query("select * from logins").all()).toEqual([]);
     const used = await t.use(token);
     expect(used.status).toBe(303);
-    expect(used.headers.get("location")).toBe("/");
+    expect(used.headers.get("location")).toBe("/?signed_in=1");
     const cookie = loginOf(used);
     expect((await me(t, cookie)).user).toMatchObject({
       id: "ana",
@@ -562,7 +564,7 @@ describe("the code", () => {
     const { token, code } = t.mailTo(ANA)!;
     const res = await t.code(ANA, code, challenge);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ landing: "/" });
+    expect(await res.json()).toEqual({ landing: "/?signed_in=1" });
     expect((await me(t, loginOf(res))).user?.id).toBe("ana");
     expect((await t.use(token)).status).toBe(404);
     expect((await t.code(ANA, code, challenge)).status).toBe(401);
@@ -686,7 +688,7 @@ describe("invites", () => {
     await t.clock.advance(SIGN_IN_MS * 4);
     const used = await t.use(mail.token);
     expect(used.status).toBe(303);
-    expect(used.headers.get("location")).toBe("/portfolios");
+    expect(used.headers.get("location")).toBe("/portfolios?signed_in=1");
   });
 
   test("sent again, it replaces the unused one; a failed send keeps the person", async () => {
@@ -732,7 +734,7 @@ describe("invites", () => {
     expect((await t.code(ANA, code, null)).status).toBe(401);
     const used = await t.code(ANA, code, "C".repeat(43));
     expect(used.status).toBe(200);
-    expect(await used.json()).toEqual({ landing: "/portfolios" });
+    expect(await used.json()).toEqual({ landing: "/portfolios?signed_in=1" });
   });
 });
 

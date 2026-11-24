@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   ServiceBackend,
@@ -19,6 +18,9 @@ import { renderPlist } from "../src/service/plist.ts";
 import { EXIT_TIMEOUT } from "../src/service/service.ts";
 import { fakeClock } from "./helpers/clock.ts";
 import { drive } from "./helpers/drive.ts";
+import { tempDirs } from "./helpers/temp.ts";
+
+const tempDir = tempDirs();
 
 const HOME = "/home/u";
 const DATA = "/home/u/.1ctx-markets";
@@ -464,7 +466,7 @@ describe("service definition", () => {
 
 describe("service purge on disk", () => {
   test("a file already gone is no error", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "markets-purge-"));
+    const dir = tempDir("markets-purge-");
     writeFileSync(join(dir, "markets.db"), "x");
     const { backend } = fake({ args: [BIN, "--data", dir] });
     const { all, lines } = deps(backend);
@@ -477,7 +479,7 @@ describe("service purge on disk", () => {
   });
 
   test("a file that cannot be removed fails the purge", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "markets-purge-"));
+    const dir = tempDir("markets-purge-");
     // a directory in place of the log: rm without recursion refuses it
     mkdirSync(join(dir, "markets.log", "held"), { recursive: true });
     const { backend, calls } = fake({ args: [BIN, "--data", dir] });

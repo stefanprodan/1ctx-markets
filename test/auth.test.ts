@@ -5,13 +5,11 @@ import { describe, expect, test } from "bun:test";
 import {
   chmodSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   Client,
@@ -31,6 +29,9 @@ import { errorFields, format, logger, MASK } from "../src/runtime/log.ts";
 import { IDLE_TIMEOUT_S, router } from "../src/server/http.ts";
 import { SECRETS, withApp } from "./helpers/app.ts";
 import { fakeClock } from "./helpers/clock.ts";
+import { tempDirs } from "./helpers/temp.ts";
+
+const tempDir = tempDirs();
 
 const WRONG = "wrong-bearer-0123456789abcdef0123456789abcdef";
 
@@ -260,7 +261,7 @@ describe("key files", () => {
   });
 
   test("a first start writes only a prefixed admin key the owner reads", () => {
-    const dir = join(mkdtempSync(join(tmpdir(), "keys-")), "secrets");
+    const dir = join(tempDir("keys-"), "secrets");
     const first = startKeys(keys(dir));
     expect(first.created).toBe(true);
     expect(readdirSync(dir)).toEqual([ADMIN_FILE]);
@@ -272,14 +273,14 @@ describe("key files", () => {
     expect(statSync(dir).mode & 0o777).toBe(0o700);
 
     expect(startKeys(keys(dir))).toEqual({ admin: value, created: false });
-    const other = join(mkdtempSync(join(tmpdir(), "keys-")), "secrets");
+    const other = join(tempDir("keys-"), "secrets");
     createAdmin(other);
     expect(readFileSync(join(other, ADMIN_FILE), "utf8")).not.toBe(value);
     expect(value.startsWith(ADMIN_PREFIX)).toBe(true);
   });
 
   test("a key under the old admin file name is never read", () => {
-    const dir = join(mkdtempSync(join(tmpdir(), "keys-")), "secrets");
+    const dir = join(tempDir("keys-"), "secrets");
     mkdirSync(dir, { recursive: true });
     const old = "an-old-admin-file-0123456789abcdef0123456789";
     writeFileSync(join(dir, "admin.key"), old);
@@ -290,7 +291,7 @@ describe("key files", () => {
   });
 
   test("an existing admin key file is never replaced, even an empty one", () => {
-    const dir = mkdtempSync(join(tmpdir(), "keys-"));
+    const dir = tempDir("keys-");
     writeFileSync(join(dir, ADMIN_FILE), "");
     expect(createAdmin(dir)).toBe(false);
     expect(readFileSync(join(dir, ADMIN_FILE), "utf8")).toBe("");
@@ -302,7 +303,7 @@ describe("key files", () => {
   });
 
   test("an admin key that cannot be written stops the start naming the file", () => {
-    const root = mkdtempSync(join(tmpdir(), "keys-"));
+    const root = tempDir("keys-");
     const dir = join(root, "secrets");
     mkdirSync(dir);
     chmodSync(dir, 0o500);
