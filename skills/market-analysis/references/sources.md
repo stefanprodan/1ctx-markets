@@ -25,14 +25,27 @@ count as coverage until checked.
 | Depositary receipts | 20-F and 6-K on EDGAR; F-1 or 424B4 for the terms | the home filings above, for the underlying share |
 | ETFs and funds | issuer factsheet and prospectus; annual report (tracking difference); the index provider's methodology | the same, by domicile: key information document, prospectus, annual and semi-annual reports; the index provider's methodology (caps, rebalance and reconstitution dates) |
 | Currency pairs | both central banks: decisions, minutes, the official fixing, reserves and intervention data; the statistics offices (inflation, current account); the finance ministries (budget); rating agencies' releases; the real effective exchange rate from BIS (`FRED:` series); the IMF's Article IV and External Sector Report | the same |
+| Commodities | the exchange: contract specifications, settlement prices along the curve, warehouse stocks; `research` `positioning` for the CFTC's weekly reports; industry bodies for supply and demand (World Gold Council, Silver Institute, the IEA and EIA for energy, the USDA for crops); producers' annual reports for costs; central banks' and the IMF's reserve data; the issuers of backed funds for their holdings | the same |
 | A regional exchange | | the exchange's own site: index weights, issuer calendars, filings and fund reports it publishes |
 | Events and context | Reuters, Bloomberg, FT, WSJ, AP and the main business press of the issuer's country | the same |
 
-Filings come from the issuer's market: a US filer's from SEC EDGAR (the
-server's `research` `filings`, then sec.gov for the documents and the forms
-it leaves out), any other issuer's from its annual report, its home exchange
-or securities regulator, and its investor-relations site. A foreign issuer
-that also files with the SEC has both.
+Filings come from the issuer's market. A US filer's come from `research`
+`filings`: which filings exist, their form, dates, items, flags and `url`.
+A filing's text comes first from the issuer's investor-relations site,
+which posts the same results releases, reports and presentations. When
+only the filing holds it, fetch the `url` with curl in bash, never
+`webfetch`: sec.gov refuses a request without a declared User-Agent, and
+`webfetch` cannot set one. Send exactly this one and no other name or
+contact:
+
+```sh
+curl -s -A "market-analysis-skill contact@example.com" "<url>"
+```
+
+Cite the filing by its form and date from `research` `filings`. Any other issuer's
+come from its annual report, its home exchange or securities regulator,
+and its investor-relations site. A foreign issuer that also files with the
+SEC has both.
 
 Cite inline, beside the figure: publisher, document, its date and the period
 it covers. A URL only for a page a search would not find again (canonical, no
