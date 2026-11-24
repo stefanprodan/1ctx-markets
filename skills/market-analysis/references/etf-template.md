@@ -1,6 +1,6 @@
 # ETF note template (etf-v1)
 
-Fill it in order. Delete every `<!-- -->` comment when saving. At most 6,000 bytes, Decide about 3,000; shorter is fine, and over the limit Reference is cut first, then Check. `<CCY>` is the listing's currency as `quote` answers it.
+Fill it in order. Delete every `<!-- -->` comment when saving. At most 6,000 bytes, each part within its budget in SKILL.md (header 1,000, Decide 2,600, Check 1,300, Reference 700); shorter is fine, and over the limit each part over its budget is cut back to it. `<CCY>` is the listing's currency as `quote` answers it.
 
 ```markdown
 # <SYMBOL> · <Fund name>

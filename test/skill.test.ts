@@ -20,7 +20,11 @@ const ANSWER_FIELDS = [
   "reported",
   "conflict",
   "unavailable",
+  "url",
 ];
+
+// The agent's own tools the skill names, never the server's.
+const CLIENT_TOOLS = ["webfetch"];
 
 const EVERY = {
   portfolio: "write",
@@ -114,7 +118,11 @@ describe("the market analysis skill", () => {
         expect(named).toContain(tool);
       }
       const unknown = [...named].filter(
-        (x) => !names.has(x) && !words.has(x) && !ANSWER_FIELDS.includes(x),
+        (x) =>
+          !names.has(x) &&
+          !words.has(x) &&
+          !ANSWER_FIELDS.includes(x) &&
+          !CLIENT_TOOLS.includes(x),
       );
       expect(unknown).toEqual([]);
     }));

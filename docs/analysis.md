@@ -24,6 +24,16 @@ server; the server never calls a model and never writes one itself.
   `test/skill.test.ts` fails when the skill names a tool, argument,
   `analysis` action or answer field the server does not have, so a
   rename breaks the build, not a scheduled run.
+- **The skill's `scripts/check-note.sh` checks a draft before the
+  save**, in the agent's own shell: part sizes against their budgets,
+  header lines per template, and the rules a reader trips on (time
+  and personal words, a bare `$`, live readings in Decide, tables
+  without blank lines). It uses bash and awk only, so it runs in 1ctx's
+  just-bash sandbox, whose awk differs from the usual ones: no
+  concatenation after a comparison or before a parenthesis, and local
+  arrays kept between calls. `test/skill-check-note.test.ts` runs it
+  in bash on made-up notes of every kind; just-bash is checked by
+  hand.
 - **The server serves every folder under `skills/`, without a key**
   (`src/server/skills.ts`): `/.well-known/agent-skills/index.json`,
   the index 1ctx's skill import reads (name, `archive`, the

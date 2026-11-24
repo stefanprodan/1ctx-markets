@@ -1,6 +1,6 @@
 # Stock note template (stock-v1)
 
-Fill it in order. Delete every `<!-- -->` comment when saving, and leave out a section marked "(if applicable)" when it doesn't apply. At most 8,000 bytes, Decide about 3,000; shorter is fine, and over the limit Reference is cut first, then Check. `<CCY>` is the listing's currency as `quote` answers it; every price and per-share value carries it.
+Fill it in order. Delete every `<!-- -->` comment when saving, and leave out a section marked "(if applicable)" when it doesn't apply. At most 8,000 bytes, each part within its budget in SKILL.md (header 900, Decide 3,000, Check 2,500, Reference 1,100); shorter is fine, and over the limit each part over its budget is cut back to it. `<CCY>` is the listing's currency as `quote` answers it; every price and per-share value carries it.
 
 ```markdown
 # <SYMBOL> · <Company name>

@@ -1,6 +1,6 @@
 # Currency pair note template (fx-v1)
 
-Fill it in order. Delete every `<!-- -->` comment when saving. At most 6,000 bytes, Decide about 3,000; shorter is fine, and over the limit Reference is cut first, then Check. A pair `<BASE>/<QUOTE>` is priced in `<QUOTE>` per one `<BASE>`, as `quote` answers it (EURRON=X: lei per euro): the pair rising means `<BASE>` is stronger. Every rate and level says which way it reads.
+Fill it in order. Delete every `<!-- -->` comment when saving. At most 6,000 bytes, each part within its budget in SKILL.md (header 1,000, Decide 2,600, Check 1,300, Reference 700); shorter is fine, and over the limit each part over its budget is cut back to it. A pair `<BASE>/<QUOTE>` is priced in `<QUOTE>` per one `<BASE>`, as `quote` answers it (EURRON=X: lei per euro): the pair rising means `<BASE>` is stronger. Every rate and level says which way it reads.
 
 ```markdown
 # <BASE>/<QUOTE> · <base currency name> / <quote currency name>
