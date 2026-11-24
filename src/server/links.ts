@@ -13,6 +13,7 @@ import type { Writer } from "../storage/writer.ts";
 import { recheck } from "./caller.ts";
 import type { Email } from "./email/settings.ts";
 import type { Failure } from "./email/smtp.ts";
+import { UNKNOWN_PROVIDER } from "./passkeys/provider.ts";
 import { newId, newToken, openLogin, sha256 } from "./session.ts";
 
 export const SIGN_IN_MS = 15 * MINUTE_MS;
@@ -102,9 +103,11 @@ export function createLink(
   return { id, user: args.user, token, code, purpose: args.purpose, expiresAt };
 }
 
-// a person signed out everywhere: their logins and live links end
+// a person signed out everywhere: their logins, live links and passkeys
+// end, since a stolen session could have added one
 export function signOutEverywhere(db: Db, user: string): number {
   db.query("delete from links where user_id = ? and used_at is null").run(user);
+  db.query("delete from passkeys where user_id = ?").run(user);
   return db.query("delete from logins where user_id = ?").run(user).changes;
 }
 
@@ -202,6 +205,10 @@ export type Links = {
     challenge: string | null,
     replaces: string | null,
   ): Promise<Used | null>;
+  // after the answer: the person's address is told a passkey was added,
+  // so a stolen session that adds one is not silent; nothing while email
+  // is off or the person has no address
+  passkeyAdded(user: string, device: string, at: number): void;
   // the sends after their answers, which the shutdown awaits
   settled(): Promise<void>;
   // no new ask starts; one already answered still runs
@@ -221,6 +228,21 @@ const inviteText = (link: string, code: string) => ({
 const confirmText = (link: string) => ({
   subject: "Confirm your markets email",
   text: `Confirm this email for markets: ${link}. Open it where you are signed in to markets. It works once, for 15 minutes.\n`,
+});
+
+const MONTHS = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+
+// the server knows no reader's zone, so the time says UTC
+export function addedAt(at: number): string {
+  const d = new Date(at);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()} ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} UTC`;
+}
+
+// the server's address, never a sign-in link, so the email is no way in
+const passkeyText = (provider: string, at: number, origin: string | null) => ({
+  subject: "A passkey was added to your markets sign-in",
+  text: `${provider === UNKNOWN_PROVIDER ? "A passkey" : `A passkey in ${provider}`} was added to your markets sign-in, ${addedAt(at)}. Not you? Sign in${origin === null ? "" : ` at ${origin}/`}, remove it under Passkeys, and have an admin sign you out everywhere.\n`,
 });
 
 // p's answer, or late's once the clock passes ms; p goes on either way
@@ -486,6 +508,39 @@ export function links(deps: {
         }
         return null;
       }, replaces),
+    passkeyAdded(user, device, at) {
+      if (closed) return;
+      const sendNow = async () => {
+        if (!deps.email.on(deps.db)) return;
+        const u = deps.db
+          .query<{ email: string | null }, [string]>(
+            "select email from users where id = ?",
+          )
+          .get(user);
+        if (u === null || u.email === null) return;
+        const m = passkeyText(device, at, deps.email.origin(deps.db));
+        const result = await deps.email.send(
+          deps.db,
+          { name: "", address: u.email },
+          m.subject,
+          m.text,
+        );
+        if (result === null) return;
+        if (result.ok) {
+          deps.log.info("passkey email sent", { user });
+        } else {
+          deps.log.warn("passkey email failed", {
+            user,
+            failure: result.failure,
+          });
+        }
+      };
+      track(
+        sendNow().catch((error: unknown) => {
+          deps.log.error("passkey email failed", errorFields(error));
+        }),
+      );
+    },
     async settled() {
       while (pending.size > 0) await Promise.allSettled([...pending]);
     },

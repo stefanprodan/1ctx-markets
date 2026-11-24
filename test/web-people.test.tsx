@@ -184,7 +184,7 @@ describe("the code boxes", () => {
     };
     expect(sayLine(base)).toBe("Sent to ana@example.com");
     expect(sayLine({ ...base, resent: true })).toBe(
-      "New code sent to ana@example.com",
+      "Code sent to ana@example.com",
     );
     expect(sayLine({ ...base, checking: true })).toBe("Signing in");
     expect(sayLine({ ...base, error: "Wrong or expired code." })).toBe(
@@ -218,25 +218,24 @@ describe("the code boxes", () => {
 });
 
 describe("signing in", () => {
-  test("with email on: the email step and the admin key behind a switch", () => {
+  test("with email on: the email step and the admin key in the ways' menu", () => {
     const s = store(fake({}).fetch);
     s.emailOn.value = true;
     const html = render(<SignIn store={s} />);
     expect(html).toContain('<span class="label">Email</span>');
     expect(html).toContain('autocomplete="email"');
     expect(html).toContain(">Sign in</button>");
-    expect(html).toContain("Sign in with the admin key");
+    expect(html).toContain('aria-label="Ways to sign in"');
     expect(html).not.toContain("Admin key</span>");
     expect(html).not.toContain("placeholder");
   });
 
-  test("with email off: the admin key alone, with no switch", () => {
+  test("with email off: the admin key alone, with no menu", () => {
     const s = store(fake({}).fetch);
     const html = render(<SignIn store={s} />);
     expect(html).toContain("Admin key</span>");
     expect(html).not.toContain('type="email"');
-    expect(html).not.toContain("Sign in by email");
-    expect(html).not.toContain("Sign in with the admin key");
+    expect(html).not.toContain("Ways to sign in");
   });
 
   test("an ask posts the address alone; a refusal says the server's words", async () => {
@@ -456,9 +455,10 @@ describe("Server admin", () => {
         rules: 0,
         alerts: 3,
         keys: 1,
+        passkeys: 2,
       }),
     ).toBe(
-      "Removes their portfolios (6), trades (412), profile, triggered alerts (3) and keys (1).",
+      "Removes their portfolios (6), trades (412), profile, triggered alerts (3), keys (1) and passkeys (2).",
     );
     expect(removeLine({ keys: 1 })).toBe("Removes their keys (1).");
     expect(removeLine({ logins: 2 })).toBe("Removes them.");
@@ -710,7 +710,7 @@ describe("Server admin", () => {
 describe("after the review", () => {
   test("the line under the boxes holds the longest address line", () => {
     const email = "a.very.long.address@an-example-domain.example.com";
-    expect(holdLine(email)).toBe(`New code sent to ${email}`);
+    expect(holdLine(email)).toBe(`Code sent to ${email}`);
     for (const state of [
       { checking: true, error: null, resent: false },
       { checking: false, error: "Wrong or expired code.", resent: false },

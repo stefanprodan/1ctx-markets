@@ -98,7 +98,7 @@ MCP tools copied onto paths.
 | `POST /users` | admin | `addUser()` | `{name, email, role}`: adds a person and emails the invite; 201 `{user, invite: "sent"}` or `{user, invite: "failed", reason}`; 409 while email is off or the address is taken |
 | `PATCH /users/{id}` | admin | `changeUser()` | `{name, role}`, at least one; `{user}`; 409 making the operator a member |
 | `POST /users/{id}/invite` | admin | `inviteAgain()` | no body: a new 7-day invite, replacing an unused one; `{invite, reason?}`; 409 while email is off or for a person with no email |
-| `POST /users/{id}/sign-out` | admin | `signOutUser()` | no body: ends their logins and live links; 204 |
+| `POST /users/{id}/sign-out` | admin | `signOutUser()` | no body: ends their logins and live links and removes their passkeys; 204 |
 | `DELETE /users/{id}?dry_run=` | admin | `removeUser()` | removes the person and every row of theirs; `{dry_run, deleted}` with each kind's count; `dry_run=true` deletes nothing; 409 for the operator |
 | `GET /smtp` | admin | `smtpAnswer()` | `{settings, key_names, email_on, key_missing}` (`docs/admin.md`, "Email") |
 | `PUT /smtp` | admin | `putSmtp()` | every field of the settings; the same answer as `GET` |

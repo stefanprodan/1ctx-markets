@@ -240,6 +240,7 @@ const OWNED: readonly { name: string; table: string; where: string }[] = [
   { name: "rules", table: "rules", where: "owner = ?1" },
   { name: "alerts", table: "alerts", where: "owner = ?1" },
   { name: "keys", table: "keys", where: "user_id = ?1" },
+  { name: "passkeys", table: "passkeys", where: "user_id = ?1" },
   { name: "logins", table: "logins", where: "user_id = ?1" },
   { name: "links", table: "links", where: "user_id = ?1" },
 ];

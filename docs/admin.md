@@ -26,7 +26,10 @@ never signs in and a sign-in never opens `/mcp`.
 - **`secrets/user-admin.key` is the one key file a first start
   writes** (`docs/config.md`, Keys), prefixed `1ctx-markets-admin-`.
   One that is unusable stops the start; the message names the file
-  only. It is rotated by replacing the file and restarting.
+  only. It is rotated by replacing the file and restarting, which ends
+  the logins it opened and the passkeys added from them (`docs/web.md`,
+  "The admin key"), so a leaked key, once replaced, leaves no way in
+  behind.
 - **The admin scope takes the admin key or an admin's login**, checked
   after the route is matched (`router()` in `src/server/http.ts`): an
   agent key or a member's login there is 403. The admin key also holds
@@ -180,11 +183,15 @@ The routes, their bodies and answers are the one table in
   unused invite. The write that makes an invite re-checks the caller
   is still an admin. Invites skip the ask caps.
 - **Sign out everywhere** (`signOutEverywhere()`) deletes the person's
-  logins and live links; their data and keys stay.
+  logins, live links and passkeys; their data and keys stay. It is the
+  step for a lost device or a stolen session, and a passkey is a
+  standing way in that a session could have added: the person signs in
+  by email again and adds a new one (`docs/web.md`, "Passkeys").
 - **Removing a person is one transaction** (`removeUserRows()`): their
   trades, positions, portfolios, brokers, settings, profile revisions,
   trade plans (their tags and revisions first), dashboard, rules,
-  alerts, keys, logins and links, then the row. The
+  alerts, keys, passkeys, logins and links, then the row; an add's
+  unanswered challenge goes with its login. The
   answer counts each kind (`ownedCounts()`); `?dry_run=true` counts
   without deleting, for the confirmation. Fund prices they entered and
   analysis revisions they wrote stay, being shared, their author's id

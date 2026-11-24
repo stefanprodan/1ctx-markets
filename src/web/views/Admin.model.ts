@@ -31,6 +31,7 @@ const NAMED: readonly [string, string, boolean][] = [
   ["rules", "alerts", true],
   ["alerts", "triggered alerts", true],
   ["keys", "keys", true],
+  ["passkeys", "passkeys", true],
 ];
 
 export function removeLine(counts: Counts): string {

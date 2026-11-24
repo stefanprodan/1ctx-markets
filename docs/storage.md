@@ -387,8 +387,21 @@ in `src/app.ts`.
   `asked_at`, kept a day so the caps count asks whatever became of
   their links) and `link_misses` (no longer written: an invite's wrong
   codes count on its `code_tries`, whatever browser tried them).
-  Expired logins, admin-key logins of an older `user-admin.key`, used or expired links and asks past a day go
-  with the startup and daily prunes (`pruneLogins()`).
+  Expired logins and passkey challenges, admin-key logins and passkeys
+  of an older `user-admin.key`, used or expired links and asks past a
+  day go with the startup and daily prunes (`pruneLogins()`).
+- **`passkeys` holds the passkeys people sign in with**
+  (`0052-passkeys`): `user_id` (`users`, on delete cascade), `rp_id`
+  (the hostname), `origin` (the address it was added at, port
+  included), `credential_id` (base64url, unique),
+  `public_key` (SPKI bytes), `alg` (`-7` or `-257`), `sign_count`,
+  `transports` (JSON), `device` (the provider's name, `docs/web.md`), `admin_digest` (from an admin-key
+  login, so a new key ends it), `created_at`, `last_used_at`.
+  `passkey_challenges` holds each ceremony's challenge until its answer
+  deletes it: `challenge_hash` (SHA-256, unique), `purpose` (`add` or
+  `sign_in`), `login_id` (an add's, `logins` on delete cascade),
+  `rp_id`, `origin`, `expires_at`, two minutes on; each insert deletes the
+  expired rows (`docs/web.md`, "Passkeys").
 - **`push_subscriptions` holds the devices push goes to**
   (`0048-push-subscriptions`): `owner` (`users`) and `login`
   (`logins`), both on delete cascade, so a sign-out, an expired login

@@ -104,6 +104,8 @@ const PATHS = {
   numbered:
     "M6.5 4h7M6.5 8h7M6.5 12h7M2.5 3l1-.5V6M2.5 9.5a1 1 0 0 1 2 0c0 .8-2 1.5-2 2.5h2",
   user: "M8 8a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5zM2.5 13.5c.6-2.6 2.9-4 5.5-4s4.9 1.4 5.5 4",
+  // the sign-in's email code: an envelope
+  mail: "M2.5 4h11v8.5h-11zM2.5 4.5 8 8.75l5.5-4.25",
   // Portfolios: a briefcase
   briefcase: "M2.5 5.5h11v8h-11zM6 5.5v-2h4v2M2.5 9h11",
   shield:

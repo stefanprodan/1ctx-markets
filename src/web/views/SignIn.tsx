@@ -1,16 +1,24 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
-// Sign-in by an emailed code (or the link beside it), and the admin key,
-// which always works. Without email only the admin key is offered.
+// Sign in by emailed code, passkey or admin key; the way picked is kept.
+// Every emailed sign-in ends on a step that adds a passkey or skips.
 
 import { useSignal } from "@preact/signals";
+import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
+import {
+  type AssertionJSON,
+  cancelled,
+  passkeyWords,
+  UNKNOWN_PASSKEY,
+} from "../app/Passkeys.model.ts";
+import { dropSignedIn } from "../app/Passkeys.tsx";
 import { navigate } from "../app/router.ts";
-import { says } from "../data/api.ts";
+import { ApiError, says } from "../data/api.ts";
 import type { Store } from "../data/store.ts";
-import { Mark, Wordmark } from "../lib/icons.tsx";
+import { Icon, type IconName, Mark, Wordmark } from "../lib/icons.tsx";
 import { Card } from "../ui/Card.tsx";
-import { Notice } from "../ui/Notice.tsx";
+import { MenuButton, type MenuItem } from "../ui/Menu.tsx";
 import {
   codeFlow,
   DIGITS,
@@ -25,12 +33,166 @@ import {
 } from "./SignIn.model.ts";
 import "./signin.css";
 
-type Step = "email" | "code" | "key";
+type Step = "email" | "code" | "key" | "passkey";
+type Way = "email" | "passkey" | "key";
 
-export function SignIn({ store }: { store: Store }) {
+const KEPT_WAY = "markets-sign-in";
+
+function keptWay(): Way | null {
+  try {
+    const v = localStorage.getItem(KEPT_WAY);
+    return v === "email" || v === "passkey" || v === "key" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function keepWay(way: Way) {
+  try {
+    localStorage.setItem(KEPT_WAY, way);
+  } catch {}
+}
+
+// the way a sign-in goes, from what the server and browser offer
+export function wayOf(picked: Step, emailOn: boolean, passkeys: boolean): Step {
+  if (picked === "passkey" && !passkeys) return emailOn ? "email" : "key";
+  if (!emailOn && (picked === "email" || picked === "code")) return "key";
+  return picked;
+}
+
+const WAYS: { way: Way; label: string; icon: IconName }[] = [
+  { way: "email", label: "Email code", icon: "mail" },
+  { way: "passkey", label: "Passkey", icon: "key" },
+  { way: "key", label: "Admin key", icon: "shield" },
+];
+
+// the one button a step has, and beside it the menu of its other actions
+function Action({
+  children,
+  disabled,
+  onClick,
+  items,
+  label = "Ways to sign in",
+  menuDisabled = disabled,
+  working = false,
+  goRef,
+}: {
+  children: ComponentChildren;
+  disabled: boolean;
+  // none: the form's submit
+  onClick?: () => void;
+  // none: no menu
+  items: MenuItem[];
+  label?: string;
+  menuDisabled?: boolean;
+  // something on its way: the arrow turns to a spinner
+  working?: boolean;
+  goRef?: { current: HTMLButtonElement | null };
+}) {
+  return (
+    <div class="signin-action">
+      <button
+        ref={goRef}
+        type={onClick === undefined ? "submit" : "button"}
+        class="btn btn-primary signin-go"
+        disabled={disabled}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+      {items.length > 0 && (
+        <MenuButton
+          label={label}
+          icon="chevron"
+          head
+          buttonClass="btn-primary signin-pick"
+          menuClass="menu-pop-field"
+          disabled={menuDisabled}
+          items={items}
+          face={
+            working ? (
+              <span class="spinner signin-spin" aria-hidden="true" />
+            ) : undefined
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+// keeps its height, so nothing moves when it shows
+function Said({ error }: { error: string | null }) {
+  return (
+    <p class="signin-say error" role="alert">
+      {error ?? ""}
+    </p>
+  );
+}
+
+function Frame({ children }: { children: ComponentChildren }) {
+  return (
+    <main class="signin">
+      <div class="signin-brand">
+        <Mark size={64} />
+        <div class="signin-name">
+          <Wordmark height={26} />
+          <p class="signin-line">Markets</p>
+        </div>
+      </div>
+      {children}
+    </main>
+  );
+}
+
+// signed in already: the landing waits behind it until added or skipped
+export function PasskeyStep({ store }: { store: Store }) {
+  const p = store.passkeys;
+  useEffect(() => p.prime("add"), [p]);
+  return (
+    <Frame>
+      <Card class="signin-card">
+        <div class="signin-form">
+          <div class="signin-step">
+            <span class="signin-step-title">
+              <Icon name="key" size={16} />
+              Sign in faster next time
+            </span>
+            <p class="signin-hint faint">
+              Use Face ID, Touch ID or your password manager instead of a code.
+            </p>
+          </div>
+          <Said error={p.error.value} />
+          <button
+            type="button"
+            class="btn btn-primary"
+            disabled={p.busy.value || p.waiting("add")}
+            onClick={() => void p.add()}
+          >
+            {p.busy.value ? "Adding" : "Add a passkey"}
+          </button>
+          <button
+            type="button"
+            class="btn-text signin-skip"
+            disabled={p.busy.value}
+            onClick={() => {
+              p.error.value = null;
+              p.step.value = false;
+            }}
+          >
+            Skip
+          </button>
+        </div>
+      </Card>
+    </Frame>
+  );
+}
+
+// opening: the step to start on, as a render of a later step needs
+export function SignIn({ store, opening }: { store: Store; opening?: Step }) {
   const emailOn = store.emailOn.value;
-  const chosen = useSignal<Step>("email");
-  const step: Step = emailOn ? chosen.value : "key";
+  const chosen = useSignal<Step>(opening ?? keptWay() ?? "email");
+  const support = store.passkeys.support.value;
+  const step = wayOf(chosen.value, emailOn, support);
   const email = useSignal("");
   const code = useSignal("");
   const key = useSignal("");
@@ -47,6 +209,35 @@ export function SignIn({ store }: { store: Store }) {
   useEffect(() => {
     if (step === "code") codeInput.current?.focus();
   }, [step]);
+  // a refused passkey is not offered again this visit
+  const refused = useSignal(false);
+  // the email and key fields' autofill; not mid-code, where the boxes
+  // hold the person's attention
+  const fill =
+    support &&
+    store.passkeys.autofill.value &&
+    !refused.value &&
+    (step === "email" || step === "key");
+  useEffect(
+    // options in hand before any tap, the menu's Passkey included; the
+    // autofill primes its own
+    () =>
+      support && step !== "code" && !fill
+        ? store.passkeys.prime("sign_in")
+        : undefined,
+    [support, step, fill, store],
+  );
+  useEffect(
+    () =>
+      fill
+        ? store.passkeys.listen((answer) => {
+            // its challenge is spent: a busy card holds it again on new options
+            if (busy.peek() || sending.peek()) store.passkeys.signInFailed();
+            else void signInByPasskey(answer);
+          })
+        : undefined,
+    [fill, store],
+  );
 
   const flow = useMemo(
     () =>
@@ -128,11 +319,41 @@ export function SignIn({ store }: { store: Store }) {
     chosen.value = to;
   };
 
+  // answer: the autofill's; else the browser is asked before any await,
+  // inside the tap
+  async function signInByPasskey(answer?: AssertionJSON) {
+    if (busy.value || sending.value) return;
+    const signing = store.signInByPasskey((to) => navigate(to, true), answer);
+    dropSignedIn();
+    busy.value = true;
+    error.value = null;
+    try {
+      await signing;
+    } catch (err) {
+      const words = passkeyWords(err, false);
+      if (!cancelled(err)) refused.value = true;
+      // gone from the account: the way it was kept on goes with it
+      if (
+        err instanceof ApiError &&
+        err.code === UNKNOWN_PASSKEY &&
+        chosen.peek() === "passkey"
+      ) {
+        const back: Way = emailOn ? "email" : "key";
+        keepWay(back);
+        go(back);
+      }
+      error.value = words;
+    } finally {
+      busy.value = false;
+    }
+  }
+
   const submitKey = async (event: Event) => {
     event.preventDefault();
     if (busy.value) return;
     busy.value = true;
     error.value = null;
+    dropSignedIn();
     try {
       await store.signIn(key.value);
       key.value = "";
@@ -143,15 +364,45 @@ export function SignIn({ store }: { store: Store }) {
     }
   };
 
+  const offered: MenuItem[] = WAYS.filter(
+    (w) => (w.way !== "email" || emailOn) && (w.way !== "passkey" || support),
+  ).map((w) => ({
+    label: w.label,
+    icon: w.icon,
+    checked: step === w.way,
+    run: () => {
+      keepWay(w.way);
+      go(w.way);
+      // picking Passkey asks for it in the same tap, as iOS needs
+      if (w.way === "passkey") void signInByPasskey();
+    },
+  }));
+  // one way alone needs no menu
+  const ways = offered.length > 1 ? offered : [];
+  const codeActions: MenuItem[] = [
+    {
+      label: "Send a new code",
+      icon: "retry",
+      run: async () => {
+        go("code");
+        resent.value = false;
+        if (!(await send())) return;
+        resent.value = true;
+        codeInput.current?.focus();
+      },
+    },
+    {
+      label: "Use another email",
+      icon: "pencil",
+      run: () => {
+        resent.value = false;
+        go("email");
+      },
+    },
+  ];
+
   return (
-    <main class="signin">
-      <div class="signin-brand">
-        <Mark size={64} />
-        <div class="signin-name">
-          <Wordmark height={26} />
-          <p class="signin-line">Markets</p>
-        </div>
-      </div>
+    <Frame>
       <Card class="signin-card">
         {step === "email" && (
           <form
@@ -168,7 +419,7 @@ export function SignIn({ store }: { store: Store }) {
               <input
                 name="email"
                 type="email"
-                autocomplete="email"
+                autocomplete={fill ? "email webauthn" : "email"}
                 inputmode="email"
                 disabled={sending.value}
                 value={email.value}
@@ -177,15 +428,33 @@ export function SignIn({ store }: { store: Store }) {
                 }}
               />
             </label>
-            {error.value && <Notice error>{error.value}</Notice>}
-            <button
-              type="submit"
-              class="btn btn-primary"
-              disabled={sending.value}
+            <Said error={error.value} />
+            <Action
+              disabled={sending.value || busy.value}
+              working={sending.value || busy.value}
+              items={ways}
             >
               {sending.value ? "Sending" : "Sign in"}
-            </button>
+            </Action>
           </form>
+        )}
+        {step === "passkey" && (
+          <div class="signin-form">
+            <p class="signin-hint faint">
+              Use Face ID, Touch ID or your password manager.
+            </p>
+            <Said error={error.value} />
+            <Action
+              disabled={
+                busy.value || sending.value || store.passkeys.waiting("sign_in")
+              }
+              onClick={() => void signInByPasskey()}
+              working={busy.value || store.passkeys.waiting("sign_in")}
+              items={ways}
+            >
+              {busy.value ? "Signing in" : "Sign in"}
+            </Action>
+          </div>
         )}
         {step === "code" && (
           <form
@@ -231,49 +500,27 @@ export function SignIn({ store }: { store: Store }) {
                 })}
               </span>
             </p>
-            <div class="signin-alts">
-              {unread.value && (
-                <button
-                  ref={again}
-                  type="button"
-                  class="btn-text"
-                  disabled={busy.value}
-                  onClick={() => void retry()}
-                >
-                  Try again
-                </button>
-              )}
-              <button
-                type="button"
-                class="btn-text"
-                disabled={sending.value || busy.value}
-                onClick={async () => {
-                  restart();
-                  code.value = "";
-                  error.value = null;
-                  wrong.value = false;
-                  resent.value = false;
-                  if (!(await send())) return;
-                  resent.value = true;
-                  codeInput.current?.focus();
-                }}
-              >
-                {sending.value ? "Sending" : "Send a new code"}
-              </button>
-              <button
-                type="button"
-                class="btn-text"
-                disabled={sending.value || busy.value}
-                onClick={() => {
-                  restart();
-                  code.value = "";
-                  resent.value = false;
-                  go("email");
-                }}
-              >
-                Use another email
-              </button>
-            </div>
+            <Action
+              goRef={again}
+              disabled={
+                busy.value ||
+                sending.value ||
+                (!unread.value && code.value.length < DIGITS)
+              }
+              menuDisabled={busy.value || sending.value}
+              working={busy.value || sending.value}
+              onClick={unread.value ? () => void retry() : undefined}
+              items={codeActions}
+              label="More"
+            >
+              {unread.value
+                ? "Try again"
+                : busy.value
+                  ? "Signing in"
+                  : sending.value
+                    ? "Sending"
+                    : "Sign in"}
+            </Action>
           </form>
         )}
         {step === "key" && (
@@ -283,31 +530,23 @@ export function SignIn({ store }: { store: Store }) {
               <input
                 name="key"
                 type="password"
-                autocomplete="current-password"
+                autocomplete={
+                  fill ? "current-password webauthn" : "current-password"
+                }
                 value={key.value}
                 onInput={(e) => {
                   key.value = (e.currentTarget as HTMLInputElement).value;
                 }}
               />
             </label>
-            {error.value && <Notice error>{error.value}</Notice>}
-            <button type="submit" class="btn btn-primary" disabled={busy.value}>
+            <Said error={error.value} />
+            <Action disabled={busy.value} working={busy.value} items={ways}>
               Sign in
-            </button>
+            </Action>
           </form>
         )}
       </Card>
-      {emailOn && (
-        <button
-          type="button"
-          class="btn-text signin-switch"
-          disabled={sending.value || busy.value}
-          onClick={() => go(step === "key" ? "email" : "key")}
-        >
-          {step === "key" ? "Sign in by email" : "Sign in with the admin key"}
-        </button>
-      )}
-    </main>
+    </Frame>
   );
 }
 

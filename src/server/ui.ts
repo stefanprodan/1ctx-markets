@@ -1,13 +1,13 @@
 // Copyright 2026 Stefan Prodan.
 // SPDX-License-Identifier: Apache-2.0
 // The web UI's sign-in routes under /ui: the admin key, an emailed link and
-// its code, who is signed in, and sign-out. The page faces the internet:
-// an ask answers the same whoever was named, and a failed sign-in never
-// says which half was wrong.
+// its code, passkeys, who is signed in, and sign-out. The page faces the
+// internet: an ask answers the same whoever was named, and a failed
+// sign-in never says which half was wrong.
 
 import { failed, json, NO_STORE } from "../api/http.ts";
 import { loginWho, OPERATOR } from "../operations/who.ts";
-import { fromB64url, PUBLIC_KEY_BYTES } from "../push/crypto.ts";
+import { fromB64url, PUBLIC_KEY_BYTES, toB64url } from "../push/crypto.ts";
 import { NO_PUSH, type Push } from "../push/send.ts";
 import {
   loginEndpoints,
@@ -21,7 +21,36 @@ import type { Db } from "../storage/db/index.ts";
 import type { Writer } from "../storage/writer.ts";
 import { asCaller, CallerGone, checkOf, recheck } from "./caller.ts";
 import { type Email, emailOf } from "./email/settings.ts";
-import { LINK_PATH, type Links, landingOf, SIGN_IN_MS } from "./links.ts";
+import {
+  LINK_PATH,
+  type Links,
+  landingOf,
+  type Purpose,
+  SIGN_IN_MS,
+} from "./links.ts";
+import {
+  ALGS,
+  assertionOf,
+  checkAssertion,
+  checkRegistration,
+  type Reason,
+  registrationOf,
+} from "./passkeys/checks.ts";
+import { providerOf } from "./passkeys/provider.ts";
+import {
+  CHALLENGE_MS,
+  countPasskeys,
+  findPasskey,
+  insertPasskey,
+  newChallenge,
+  PASSKEYS_PER_USER,
+  type Passkey,
+  passkeyItem,
+  removePasskey,
+  takeChallenge,
+  usePasskey,
+  userPasskeys,
+} from "./passkeys/store.ts";
 import { RateLimit } from "./ratelimit.ts";
 import {
   clearedCookie,
@@ -32,6 +61,7 @@ import {
   loginCookie,
   newToken,
   openLogin,
+  relyingParty,
   SESSION_PATH,
   sameOrigin,
 } from "./session.ts";
@@ -39,6 +69,12 @@ import {
 export const ME_PATH = "/ui/me";
 export const CODE_PATH = "/ui/code";
 export const PUSH_PATH = "/ui/push";
+export const PASSKEYS_PATH = "/ui/passkeys";
+export const PASSKEY_OPTIONS_PATH = "/ui/passkeys/options";
+export const PASSKEY_SIGN_IN_PATH = "/ui/passkeys/sign-in";
+export const PASSKEY_SIGN_IN_OPTIONS_PATH = "/ui/passkeys/sign-in/options";
+// the name the browser shows beside a passkey
+const RP_NAME = "1ctx Markets";
 // one browser holds one subscription; a few cover a reinstall
 export const PUSH_PER_LOGIN = 5;
 const MAX_ENDPOINT = 2048;
@@ -54,9 +90,15 @@ const PUSH_HOSTS = [
 export const ASK_COOKIE = "markets_ask";
 // asks, codes and links used, per client address
 export const ASKS_PER_MINUTE = 10;
+// the sign-in page fetches options on every view and keeps them fresh, so
+// they have their own window and never spend the one codes share
+export const OPTIONS_PER_MINUTE = 60;
 const MAX_NAME = 80;
 // a key is at most 4,096 bytes (keys.ts), so the body is too
 const MAX_BODY_BYTES = 8 * 1024;
+// a credential id may be 1,023 bytes, and an answer carries it four times
+const PASSKEY_BODY_BYTES = 16 * 1024;
+const PASSKEY_ID = /^[a-z0-9]{1,40}$/;
 const CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -90,13 +132,53 @@ const foreign = () =>
     message: "not sent from this server's pages",
   });
 
+const noParty = () =>
+  failed({
+    error: "forbidden",
+    message: "passkeys need an https origin or localhost",
+  });
+
+// every failed passkey sign-in, whatever failed
+const passkeyRefused = () =>
+  failed({ error: "unauthorized", message: "passkey not accepted" }, NO_STORE);
+
+// a passkey with no row here: the code lets the page ask the browser to
+// forget it; it says only whether a credential id is held, never whose
+const unknownPasskey = () =>
+  failed(
+    {
+      error: "unauthorized",
+      code: "unknown_passkey",
+      message: "passkey not accepted",
+    },
+    NO_STORE,
+  );
+
+const badPasskey = () =>
+  failed(
+    { error: "bad_arguments", message: "the passkey did not check out" },
+    NO_STORE,
+  );
+
+const fullPasskeys = () =>
+  failed({
+    error: "conflict",
+    message: `at most ${PASSKEYS_PER_USER} passkeys a person`,
+  });
+
+// an emailed sign-in lands with the flag that asks for a passkey
+const offered = (purpose: Purpose) => `${landingOf(purpose)}?signed_in=1`;
+
 // the body's one object, from the page's fetch or a plain form; null for
 // anything else
-async function bodyOf(req: Request): Promise<Record<string, unknown> | null> {
+async function bodyOf(
+  req: Request,
+  max = MAX_BODY_BYTES,
+): Promise<Record<string, unknown> | null> {
   const length = Number(req.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(length) || length > MAX_BODY_BYTES) return null;
+  if (!Number.isFinite(length) || length > max) return null;
   const bytes = await req.arrayBuffer();
-  if (bytes.byteLength > MAX_BODY_BYTES) return null;
+  if (bytes.byteLength > max) return null;
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -260,12 +342,13 @@ export type Ui = {
 
 export function ui(d: UiDeps): Ui {
   const rate = new RateLimit(ASKS_PER_MINUTE, MINUTE_MS);
-  const limited = (ip: string): Response | null => {
+  const optionsRate = new RateLimit(OPTIONS_PER_MINUTE, MINUTE_MS);
+  const limited = (ip: string, r = rate): Response | null => {
     const now = d.now();
-    if (rate.hit(ip, now)) return null;
+    if (r.hit(ip, now)) return null;
     return failed(
       { error: "too_many_requests", message: "too many tries; wait a minute" },
-      { ...NO_STORE, "retry-after": String(rate.retryAfter(ip, now)) },
+      { ...NO_STORE, "retry-after": String(r.retryAfter(ip, now)) },
     );
   };
   const current = (req: Request) => d.logins.resolve(req)?.login ?? null;
@@ -323,6 +406,35 @@ export function ui(d: UiDeps): Ui {
     return signedIn(made.token, req, null);
   }
 
+  // the routes a login holds for itself: never a key's
+  const ownLogin = (req: Request): Login | Response => {
+    if (req.headers.has("authorization")) {
+      return failed({
+        error: "forbidden",
+        message: "this key does not open this route",
+      });
+    }
+    return (
+      current(req) ?? failed({ error: "unauthorized", message: "signed out" })
+    );
+  };
+
+  const checkFor = (login: Login) =>
+    checkOf(loginWho(login.user, login.id, login.name), {
+      adminDigest: d.logins.adminDigest,
+      now: d.now,
+    });
+
+  const gone = (error: unknown): Response => {
+    if (error instanceof CallerGone) {
+      return failed({
+        error: error.status === 401 ? "unauthorized" : "forbidden",
+        message: error.message,
+      });
+    }
+    throw error;
+  };
+
   async function me(req: Request): Promise<Response> {
     if (req.method === "GET") {
       return json(meItem(current(req), d.email.on(d.db)));
@@ -345,11 +457,7 @@ export function ui(d: UiDeps): Ui {
         message: "give name or email, one at a time",
       });
     }
-    const who = loginWho(login.user, login.id, login.name);
-    const check = checkOf(who, {
-      adminDigest: d.logins.adminDigest,
-      now: d.now,
-    });
+    const check = checkFor(login);
     try {
       if (b.name !== undefined) {
         const name = typeof b.name === "string" ? b.name.trim() : "";
@@ -407,13 +515,7 @@ export function ui(d: UiDeps): Ui {
         sent.sent ? { link: "sent" } : { link: "failed", reason: sent.failure },
       );
     } catch (error) {
-      if (error instanceof CallerGone) {
-        return failed({
-          error: error.status === 401 ? "unauthorized" : "forbidden",
-          message: error.message,
-        });
-      }
-      throw error;
+      return gone(error);
     }
   }
 
@@ -458,7 +560,7 @@ export function ui(d: UiDeps): Ui {
       current(req)?.id ?? null,
     );
     if (used === null || used.token === null) return wrongCode();
-    return json({ landing: landingOf(used.purpose) }, 200, {
+    return json({ landing: offered(used.purpose) }, 200, {
       ...NO_STORE,
       "set-cookie": loginCookie(req, used.token),
     });
@@ -489,7 +591,7 @@ export function ui(d: UiDeps): Ui {
         headers: { ...NO_STORE, location: "/" },
       });
     }
-    return signedIn(used.token, req, landingOf(used.purpose));
+    return signedIn(used.token, req, offered(used.purpose));
   }
 
   // a device's subscription: the login's own, from this server's pages
@@ -500,17 +602,8 @@ export function ui(d: UiDeps): Ui {
       req.method !== "DELETE"
     )
       return notAllowed("GET, POST, DELETE");
-    // a key never borrows a browser's login
-    if (req.headers.has("authorization")) {
-      return failed({
-        error: "forbidden",
-        message: "this key does not open this route",
-      });
-    }
-    const login = current(req);
-    if (login === null) {
-      return failed({ error: "unauthorized", message: "signed out" });
-    }
+    const login = ownLogin(req);
+    if (login instanceof Response) return login;
     const key = pushes.publicKey(d.db);
     if (req.method === "GET") {
       return json(
@@ -571,8 +664,344 @@ export function ui(d: UiDeps): Ui {
     return new Response(null, { status: 204, headers: NO_STORE });
   }
 
+  const refusedPasskey = (reason: Reason) => {
+    d.log.info("passkey refused", { reason });
+  };
+
+  // the person's passkeys at every origin, so none added elsewhere hides
+  async function passkeysRoute(req: Request): Promise<Response> {
+    if (req.method !== "GET") return notAllowed("GET, POST");
+    const login = ownLogin(req);
+    if (login instanceof Response) return login;
+    return json(
+      { passkeys: userPasskeys(d.db, login.user).map(passkeyItem) },
+      200,
+      NO_STORE,
+    );
+  }
+
+  async function removePasskeyRoute(
+    req: Request,
+    id: string,
+  ): Promise<Response> {
+    if (req.method !== "DELETE") return notAllowed("DELETE");
+    const login = ownLogin(req);
+    if (login instanceof Response) return login;
+    if (!sameOrigin(req)) return foreign();
+    let removed = false;
+    if (PASSKEY_ID.test(id)) {
+      try {
+        removed = await asCaller(checkFor(login), () =>
+          d.writer.write((db) => {
+            // a sign-out landing while the delete waits removes nothing
+            recheck(db);
+            return removePasskey(db, login.user, id);
+          }),
+        );
+      } catch (error) {
+        return gone(error);
+      }
+    }
+    if (!removed) {
+      return failed({ error: "not_found", message: "no such passkey" });
+    }
+    d.log.info("passkey removed", { user: login.user, passkey: id });
+    return new Response(null, { status: 204, headers: NO_STORE });
+  }
+
+  // the browser's create() options, as PublicKeyCredentialCreationOptionsJSON
+  async function addOptions(req: Request, ip: string): Promise<Response> {
+    if (req.method !== "POST") return notAllowed("POST");
+    const login = ownLogin(req);
+    if (login instanceof Response) return login;
+    if (!sameOrigin(req)) return foreign();
+    const party = relyingParty(req);
+    if (party === null) return noParty();
+    const over = limited(ip, optionsRate);
+    if (over !== null) return over;
+    let made: { challenge: string; own: Passkey[] } | null;
+    try {
+      made = await asCaller(checkFor(login), () =>
+        d.writer.write((db) => {
+          recheck(db);
+          const held = userPasskeys(db, login.user);
+          if (held.length >= PASSKEYS_PER_USER) return null;
+          const challenge = newChallenge(
+            db,
+            {
+              purpose: "add",
+              rpId: party.rpId,
+              origin: party.origin,
+              login: login.id,
+            },
+            d.now(),
+          );
+          // the keychain keys a passkey by host and user, so one of
+          // another port of this host would be replaced
+          return {
+            challenge,
+            own: held.filter((p) => p.rpId === party.rpId),
+          };
+        }),
+      );
+    } catch (error) {
+      return gone(error);
+    }
+    if (made === null) return fullPasskeys();
+    return json(
+      {
+        challenge: made.challenge,
+        rp: { id: party.rpId, name: RP_NAME },
+        user: {
+          id: toB64url(new TextEncoder().encode(login.user)),
+          name: login.email ?? login.name,
+          displayName: login.name,
+        },
+        pubKeyCredParams: ALGS.map((alg) => ({ type: "public-key", alg })),
+        timeout: CHALLENGE_MS,
+        attestation: "none",
+        authenticatorSelection: {
+          residentKey: "required",
+          requireResidentKey: true,
+          userVerification: "required",
+        },
+        excludeCredentials: made.own.map((p) => ({
+          type: "public-key",
+          id: p.credentialId,
+          transports: p.transports,
+        })),
+      },
+      200,
+      NO_STORE,
+    );
+  }
+
+  async function addPasskey(req: Request, ip: string): Promise<Response> {
+    const login = ownLogin(req);
+    if (login instanceof Response) return login;
+    if (!sameOrigin(req)) return foreign();
+    const party = relyingParty(req);
+    if (party === null) return noParty();
+    const over = limited(ip);
+    if (over !== null) return over;
+    const b = await bodyOf(req, PASSKEY_BODY_BYTES);
+    const sent = b === null || isForm(req) ? null : registrationOf(b);
+    if (sent === null) {
+      refusedPasskey("body");
+      return badPasskey();
+    }
+    const checked = await checkRegistration(sent, {
+      type: "webauthn.create",
+      origin: party.origin,
+      rpId: party.rpId,
+    });
+    if ("refused" in checked) {
+      refusedPasskey(checked.refused);
+      return badPasskey();
+    }
+    const device = providerOf(checked.aaguid);
+    let added: ReturnType<typeof insertPasskey> | "challenge" | "full";
+    try {
+      added = await asCaller(checkFor(login), () =>
+        d.writer.write((db) => {
+          // an answer landing after a sign-out everywhere adds nothing
+          recheck(db);
+          // the clock of the write, so a queued answer expires on time
+          const now = d.now();
+          const scope = {
+            purpose: "add" as const,
+            rpId: party.rpId,
+            origin: party.origin,
+            login: login.id,
+          };
+          if (!takeChallenge(db, checked.challenge, scope, now)) {
+            return "challenge";
+          }
+          if (countPasskeys(db, login.user) >= PASSKEYS_PER_USER) {
+            return "full";
+          }
+          // the passkey keeps the trust of the login that added it
+          const digest =
+            db
+              .query<{ admin_digest: string | null }, [string]>(
+                "select admin_digest from logins where id = ?",
+              )
+              .get(login.id)?.admin_digest ?? null;
+          return insertPasskey(
+            db,
+            {
+              user: login.user,
+              rpId: party.rpId,
+              origin: party.origin,
+              credentialId: checked.credentialId,
+              publicKey: checked.publicKey,
+              alg: checked.alg,
+              signCount: checked.signCount,
+              transports: checked.transports,
+              device,
+              adminDigest: digest,
+            },
+            now,
+          );
+        }),
+      );
+    } catch (error) {
+      return gone(error);
+    }
+    if (added === "challenge") {
+      refusedPasskey("challenge");
+      return badPasskey();
+    }
+    if (added === "full") return fullPasskeys();
+    if (added === null) {
+      return failed({
+        error: "conflict",
+        message: "this passkey is already added",
+      });
+    }
+    d.log.info("passkey added", {
+      user: login.user,
+      passkey: added.id,
+      login: login.id,
+    });
+    d.links.passkeyAdded(login.user, device, added.createdAt);
+    return json(passkeyItem(added), 201, NO_STORE);
+  }
+
+  // the browser's get() options, as PublicKeyCredentialRequestOptionsJSON;
+  // discoverable, so no person is named before the tap
+  async function signInOptions(req: Request, ip: string): Promise<Response> {
+    if (req.method !== "POST") return notAllowed("POST");
+    if (!sameOrigin(req)) return foreign();
+    const party = relyingParty(req);
+    if (party === null) return noParty();
+    const over = limited(ip, optionsRate);
+    if (over !== null) return over;
+    const challenge = await d.writer.write((db) =>
+      newChallenge(
+        db,
+        {
+          purpose: "sign_in",
+          rpId: party.rpId,
+          origin: party.origin,
+          login: null,
+        },
+        d.now(),
+      ),
+    );
+    return json(
+      {
+        challenge,
+        rpId: party.rpId,
+        timeout: CHALLENGE_MS,
+        userVerification: "required",
+        allowCredentials: [],
+      },
+      200,
+      NO_STORE,
+    );
+  }
+
+  async function signInByPasskey(req: Request, ip: string): Promise<Response> {
+    if (req.method !== "POST") return notAllowed("POST");
+    if (!sameOrigin(req)) return foreign();
+    const party = relyingParty(req);
+    if (party === null) return noParty();
+    const over = limited(ip);
+    if (over !== null) return over;
+    const b = await bodyOf(req, PASSKEY_BODY_BYTES);
+    const sent = b === null || isForm(req) ? null : assertionOf(b);
+    if (sent === null) {
+      refusedPasskey("body");
+      return passkeyRefused();
+    }
+    const passkey = findPasskey(d.db, sent.id);
+    // bound to the origin it was added at, so another port of the host
+    // never signs in with it
+    if (passkey === null) {
+      refusedPasskey("credential");
+      return unknownPasskey();
+    }
+    // held, at another address: never one the browser should forget
+    if (passkey.rpId !== party.rpId || passkey.origin !== party.origin) {
+      refusedPasskey("credential");
+      return passkeyRefused();
+    }
+    // a passkey added under an older user-admin.key, before the prune
+    if (
+      passkey.adminDigest !== null &&
+      passkey.adminDigest !== d.logins.adminDigest
+    ) {
+      refusedPasskey("admin_key");
+      return passkeyRefused();
+    }
+    const checked = await checkAssertion(
+      sent,
+      { type: "webauthn.get", origin: party.origin, rpId: party.rpId },
+      passkey,
+    );
+    if ("refused" in checked) {
+      refusedPasskey(checked.refused);
+      return passkeyRefused();
+    }
+    const old = current(req);
+    const made = await d.writer.write((db) => {
+      const now = d.now();
+      const scope = {
+        purpose: "sign_in" as const,
+        rpId: party.rpId,
+        origin: party.origin,
+        login: null,
+      };
+      if (!takeChallenge(db, checked.challenge, scope, now)) {
+        return "challenge" as const;
+      }
+      // another answer of this passkey moved its count since the checks
+      if (
+        !usePasskey(db, passkey.id, passkey.signCount, checked.signCount, now)
+      ) {
+        return "count" as const;
+      }
+      if (old !== null) {
+        db.query("delete from logins where id = ?").run(old.id);
+      }
+      return openLogin(db, passkey.user, now, passkey.adminDigest);
+    });
+    if (typeof made === "string") {
+      refusedPasskey(made);
+      return passkeyRefused();
+    }
+    d.log.info("passkey used", {
+      user: passkey.user,
+      passkey: passkey.id,
+      login: made.id,
+    });
+    return json({ landing: "/" }, 200, {
+      ...NO_STORE,
+      "set-cookie": loginCookie(req, made.token),
+    });
+  }
+
+  // the path is /ui/passkeys or under it
+  async function passkeyRoute(
+    req: Request,
+    path: string,
+    ip: string,
+  ): Promise<Response> {
+    if (path === PASSKEYS_PATH) {
+      return req.method === "POST" ? addPasskey(req, ip) : passkeysRoute(req);
+    }
+    if (path === PASSKEY_OPTIONS_PATH) return addOptions(req, ip);
+    if (path === PASSKEY_SIGN_IN_OPTIONS_PATH) return signInOptions(req, ip);
+    if (path === PASSKEY_SIGN_IN_PATH) return signInByPasskey(req, ip);
+    return removePasskeyRoute(req, path.slice(PASSKEYS_PATH.length + 1));
+  }
+
   return {
     async route(req, path, ip) {
+      if (path === PASSKEYS_PATH || path.startsWith(`${PASSKEYS_PATH}/`)) {
+        return passkeyRoute(req, path, ip);
+      }
       if (path === SESSION_PATH) return session(req);
       if (path === PUSH_PATH) return pushRoute(req);
       if (path === ME_PATH) return me(req);

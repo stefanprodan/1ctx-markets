@@ -145,6 +145,7 @@ export const peopleSchemas: Record<string, Schema> = {
         rules: int,
         alerts: int,
         keys: int,
+        passkeys: int,
         logins: int,
         links: int,
       }),
@@ -288,7 +289,7 @@ export const peoplePaths = {
       security: ADMINS,
       summary: "Sign a person out everywhere",
       description:
-        "Ends their sign-ins and live links. Their data and keys stay. Takes no body.",
+        "Ends their sign-ins and live links and removes their passkeys. Their data and keys stay. Takes no body.",
       parameters: [idParam],
       responses: base({
         204: { description: "Signed out." },

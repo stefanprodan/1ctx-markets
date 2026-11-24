@@ -7,8 +7,9 @@ import { markets, type Store } from "../data/store.ts";
 import { holding, useRefresh } from "../lib/refresh.ts";
 import { hold } from "../lib/slow.ts";
 import { Page } from "../ui/Page.tsx";
-import { SignIn } from "../views/SignIn.tsx";
+import { PasskeyStep, SignIn } from "../views/SignIn.tsx";
 import { Bar } from "./Bar.tsx";
+import { PasskeysDrawer } from "./Passkeys.tsx";
 import { Rail } from "./Rail.tsx";
 import { navigate, path, visits } from "./router.ts";
 import { HOME, type Match, match } from "./routes.ts";
@@ -46,6 +47,8 @@ export function Shell({
         {children}
       </main>
       {phone && <Bar here={here} />}
+      {/* after More, over it while it slides out */}
+      <PasskeysDrawer />
     </div>
   );
 }
@@ -137,6 +140,7 @@ export function App({ store = markets }: { store?: Store }) {
     );
   }
   if (!signedIn) return <SignIn store={store} />;
+  if (store.passkeys.step.value) return <PasskeyStep store={store} />;
   if (found === null || route === null) return null;
   const held = shown !== null && shown.visit !== visit ? shown : null;
   const page = held?.found ?? found;

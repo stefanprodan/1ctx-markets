@@ -64,6 +64,7 @@ src/server/                 HTTP and MCP
   instructions.ts           the server instructions every MCP client gets
   session.ts                the web UI's sign-in and its cookie
   email/                    the SMTP server an admin sets and the one file that sends mail
+  passkeys/                 WebAuthn sign-ins: the authenticator data, the checks, the rows
 src/runtime/                the process
   config.ts                 flags and the --help text
   keys.ts                   key files, the only reader of secrets/

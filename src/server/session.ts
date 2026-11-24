@@ -78,18 +78,22 @@ export const loginLive = (
 export const endLogin = (db: Db, id: string): boolean =>
   db.query("delete from logins where id = ?").run(id).changes > 0;
 
-// expired logins, and links used or past their time; asks past a day.
-// Given the current admin digest, admin-key logins of an older key too
+// expired logins and passkey challenges, and links used or past their
+// time; asks past a day. Given the current admin digest, admin-key logins
+// of an older key too, and the passkeys they added
 export function pruneLogins(
   db: Db,
   now: number,
   operator?: string | null,
 ): void {
   db.query("delete from logins where expires_at <= ?").run(now);
+  db.query("delete from passkey_challenges where expires_at <= ?").run(now);
   if (operator !== undefined) {
-    db.query(
-      "delete from logins where admin_digest is not null and admin_digest is not ?",
-    ).run(operator);
+    for (const table of ["logins", "passkeys"]) {
+      db.query(
+        `delete from ${table} where admin_digest is not null and admin_digest is not ?`,
+      ).run(operator);
+    }
   }
   db.query(
     "delete from links where used_at is not null or expires_at <= ?",
@@ -137,6 +141,22 @@ export const loginCookie = (req: Request, token: string): string =>
 
 export const clearedCookie = (req: Request, name = COOKIE, path = "/") =>
   `${name}=; ${cookieAttributes(req, path)}; Max-Age=0`;
+
+// a passkey ceremony's relying party: the browser's Origin, https or plain
+// HTTP to loopback as the cookie takes it, its hostname the id; never the
+// Host or the SMTP public URL, which exists only while email is on
+export function relyingParty(
+  req: Request,
+): { origin: string; rpId: string } | null {
+  const origin = originOf(req);
+  if (origin === null || origin.origin !== req.headers.get("origin")) {
+    return null;
+  }
+  const secure =
+    origin.protocol === "https:" ||
+    (origin.protocol === "http:" && isLoopback(origin.hostname));
+  return secure ? { origin: origin.origin, rpId: origin.hostname } : null;
+}
 
 // the browser says where a request came from in Sec-Fetch-Site; an older one
 // sends only Origin, whose host is compared with Host, the scheme left out

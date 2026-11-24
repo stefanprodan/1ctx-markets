@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
 import {
@@ -61,7 +60,10 @@ import {
   otherListing,
 } from "./helpers/finnhub.ts";
 import { NOW } from "./helpers/sources.ts";
+import { tempDirs } from "./helpers/temp.ts";
 import { clone, fakeFetch, type Recorded } from "./helpers/yahoo.ts";
+
+const tempDir = tempDirs();
 
 type Route = (url: URL) => Promise<Recorded | undefined> | Recorded | undefined;
 
@@ -1611,7 +1613,7 @@ describe("finnhub source", () => {
   };
 
   test("off without a key file, and the start log says so", async () => {
-    const { a, db } = app(mkdtempSync(join(tmpdir(), "finnhub-off-")));
+    const { a, db } = app(tempDir("finnhub-off-"));
     try {
       expect(a.finnhub).toBeNull();
       expect(a.finnhubJobs).toBeNull();
@@ -1625,7 +1627,7 @@ describe("finnhub source", () => {
   });
 
   test("on with a key file; the key never reaches a log line or a row", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "finnhub-on-"));
+    const dir = tempDir("finnhub-on-");
     writeFileSync(join(dir, "source-finnhub.key"), `${FINNHUB_KEY}\n`);
     const lines: string[] = [];
     const { a, db, clock } = app(dir, lines);

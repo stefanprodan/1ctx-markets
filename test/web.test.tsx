@@ -3265,9 +3265,9 @@ describe("More's drawer", () => {
       for (const a of links) a.props.onClick();
       expect(closed).toBe(6);
       // the user menu's own items, closing once signed out
-      expect(
-        body.nodes.find((n) => n.type === UserItems).props.onSignedOut,
-      ).toBe(close);
+      expect(body.nodes.find((n) => n.type === UserItems).props.onClose).toBe(
+        close,
+      );
     } finally {
       recent.value = [];
       markets.me.value = null;

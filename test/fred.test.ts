@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { start } from "../src/app.ts";
 import { type Interval, readBars } from "../src/market/bars.ts";
@@ -41,7 +40,10 @@ import { type Db, open } from "../src/storage/db/index.ts";
 import { failRun, lastRun, startRun } from "../src/storage/runs.ts";
 import { writer } from "../src/storage/writer.ts";
 import { fakeClock } from "./helpers/clock.ts";
+import { tempDirs } from "./helpers/temp.ts";
 import { clone, fakeFetch, type Recorded } from "./helpers/yahoo.ts";
+
+const tempDir = tempDirs();
 
 const FIXTURES = join(import.meta.dir, "fixtures", "fred");
 // made up: no real key is ever read by a test
@@ -501,7 +503,7 @@ describe("fred job", () => {
 
 describe("fred source", () => {
   test("off without a key file, and the start log says so", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "fred-off-"));
+    const dir = tempDir("fred-off-");
     const store = keys(dir);
     expect(store.source("fred")).toBeNull();
     const clock = fakeClock();
@@ -532,7 +534,7 @@ describe("fred source", () => {
   });
 
   test("on with a key file; the key never reaches a log line or a row", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "fred-on-"));
+    const dir = tempDir("fred-on-");
     writeFileSync(join(dir, "source-fred.key"), `${KEY}\n`);
     const store = keys(dir);
     const clock = fakeClock();

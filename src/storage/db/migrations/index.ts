@@ -54,6 +54,7 @@ import { m0048 } from "./0048-push-subscriptions.ts";
 import { m0049 } from "./0049-rules-on.ts";
 import { m0050 } from "./0050-bond-schedule.ts";
 import { m0051 } from "./0051-instrument-isin.ts";
+import { m0052 } from "./0052-passkeys.ts";
 
 export const MIGRATIONS: readonly Migration[] = [
   m0001,
@@ -107,4 +108,5 @@ export const MIGRATIONS: readonly Migration[] = [
   m0049,
   m0050,
   m0051,
+  m0052,
 ];

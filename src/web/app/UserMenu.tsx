@@ -9,6 +9,7 @@ import { markets } from "../data/store.ts";
 import { Icon } from "../lib/icons.tsx";
 import { amountsHidden, toggleAmounts } from "../ui/Amounts.tsx";
 import { MenuHead } from "../ui/Menu.tsx";
+import { PasskeysItem } from "./Passkeys.tsx";
 import { theme, toggleTheme } from "./theme.ts";
 import "./usermenu.css";
 
@@ -26,9 +27,9 @@ export const userName = (): string => markets.me.value?.name ?? "";
 export const avatarIcon = (): "key" | "user" =>
   markets.me.value?.operator === true ? "key" : "user";
 
-// the signed-in person's name, then two items: the user menu's, and
-// More's on a phone
-export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
+// the signed-in person's name, then the account's items: the user menu's,
+// and More's on a phone. onClose: signed out, or Passkeys opened its drawer
+export function UserItems({ onClose }: { onClose?: () => void }) {
   const failure = useSignal<string | null>(null);
   return (
     <>
@@ -69,6 +70,7 @@ export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
         </span>
       </button>
       <PushSwitch />
+      <PasskeysItem onOpen={onClose} />
       <button
         type="button"
         class="menu-item"
@@ -80,7 +82,7 @@ export function UserItems({ onSignedOut }: { onSignedOut?: () => void }) {
             failure.value = says(err);
             return;
           }
-          onSignedOut?.();
+          onClose?.();
         }}
       >
         <Icon name="sign-out" size={14} />
@@ -160,7 +162,7 @@ export function UserMenu({
       {open && (
         <div class={`menu ${place}`}>
           <UserItems
-            onSignedOut={() => {
+            onClose={() => {
               userMenuOpen.value = false;
             }}
           />

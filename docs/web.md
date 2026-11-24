@@ -2,7 +2,8 @@
 
 Governs the web UI: the client under `src/web/`, its sign-ins
 (`src/server/session.ts`, the logins; `src/server/links.ts`, links by
-email; `src/server/ui.ts`, the `/ui/*` routes), the paths that serve it
+email; `src/server/passkeys/`, passkeys; `src/server/ui.ts`, the `/ui/*`
+routes), the paths that serve it
 (`UI_PATHS` and `serve()` in `src/server/http.ts`) and `--no-ui`.
 
 The views and their tests hold each page's words, column orders and
@@ -108,6 +109,8 @@ key alone, so status, refetch and delete need no `curl` or ssh.
   replacing `user-admin.key` and restarting answers 401 to every login
   the old key opened, and the prunes delete them (`pruneLogins()` given
   the current digest), their devices with them; logins by link stay.
+  A passkey added from such a login holds the digest too and goes the
+  same way (Passkeys, below).
 
 ## Links by email
 
@@ -149,7 +152,8 @@ learns it from `email_on` in `GET /ui/me`.
 - **Only `POST /ui/link/<token>` acts**, in one conditional update
   (unused, unexpired, its person still there) in the transaction that
   opens the login; it answers 303 to the landing, an invite's
-  `/portfolios` (empty, with its setup) and a sign-in link's `/`, and
+  `/portfolios` (empty, with its setup) and a sign-in link's `/`, with
+  `?signed_in=1` for the passkey step (Passkeys, below), and
   ends the browser's older login. A dead one is the dead page, 404.
 - **The code is for the installed app**, whose cookies on iOS are apart
   from Safari's, so a link from Mail signs in Safari, never the app.
@@ -158,8 +162,9 @@ learns it from `email_on` in `GET /ui/me`.
   holds its SHA-256. `POST /ui/code` with `{email, code}` checks a code
   only beside that cookie, so a code guessed from another browser is
   never tried and burns nobody's tries; it answers 200 with `{landing}`
-  and the cookie. A wrong code, another address, an unknown one and a
-  missing challenge answer the same 401. The fifth wrong try kills the
+  and the cookie, the landing carrying `?signed_in=1` as a link's
+  does. A wrong code, another address, an unknown one and a missing
+  challenge answer the same 401. The fifth wrong try kills the
   link (`MAX_CODE_TRIES`); using the link or the code uses both.
 - **An invite, which no browser asked for, has no challenge**: its code
   is tried beside any `markets_ask` cookie, its misses counted on the
@@ -214,6 +219,234 @@ learns it from `email_on` in `GET /ui/me`.
   rail's count, and the page sets the badge whenever its count changes,
   so marking Fired seen clears it; sign-out clears it too.
 
+## Passkeys
+
+A person who signed in once by email (or the admin key) adds a passkey
+and signs in with it after, no email round trip; the emailed sign-in
+stays, and is how a person who lost their device gets back in.
+WebAuthn with attestation `none`, no package and no CBOR
+(`src/server/passkeys/`).
+
+- **Added after a sign-in, never instead of the first one**: the invite
+  and the link already prove the address, so there is no enrollment
+  link.
+- **The relying party is the browser's `Origin`.** The four ceremony
+  routes require an `Origin` that parses and is its own serialization,
+  `https:`, or `http:` to a loopback host as `cookieAttributes()` takes
+  it, else 403 (`relyingParty()`); the id is its hostname, never `Host`
+  (a proxy rewrites it) and never the SMTP public URL (there only while
+  email is on). They are held to this server's pages (`sameOrigin()`)
+  too. A LAN or tailnet address is not a secure context, and an IP is
+  no relying party id: use `localhost` or TLS.
+- **A passkey is bound to the address it was added at, port
+  included**: one added on `localhost:11239` never signs in on
+  `localhost:3000` or staging, since another page of the same host
+  could otherwise ask for its answer; a server moved to another address
+  loses every passkey, and its people sign in by email and add new
+  ones. Each row keeps its `origin` (scheme, host, port) beside its
+  `rp_id`, the hostname; a sign-in needs the request's `Origin`, the
+  challenge's, the client data's and the row's to be one. The list
+  answers every origin's and the drawer shows them all, one of another
+  origin naming its host and port (`elsewhere()`): a client other than
+  a browser can send any https `Origin`, so a stolen session could add
+  one at an address the person never opens, and it must not hide.
+- **The WebAuthn user id is `users.id`'s bytes**, and every install's
+  operator is `operator`, so a new local install's operator passkey
+  replaces the last one's in the keychain. A device holds one passkey a
+  person per hostname, so an add excludes the person's passkeys of this
+  host, every port, and a second port of one host is already added.
+- **Every check, both ceremonies** (`checks.ts`): the client data's
+  `type`, its `challenge` an unused row of that purpose and origin, its
+  `origin` equal to the request's `Origin`, `crossOrigin` not true (the
+  page sends no `frame-ancestors`); the relying party hash equal to
+  SHA-256 of the `rp_id`; user present and user verified, since a
+  passkey is the sign-in's only factor; backed up only when backup
+  eligible; without the attested data or extension flag, exactly the
+  37 bytes of the head. An add also needs the attested
+  data flag, the credential id in the authenticator data equal to
+  `rawId`, and the SPKI key importing for the algorithm it is named for,
+  ES256 (`-7`) or RS256 (`-257`, 2,048 bits or more), nothing else. A
+  sign-in also needs no attested data flag, the user handle equal to
+  the row's `users.id`, the
+  signature (an ES256 one turned from DER into raw `r || s`), and the
+  sign count moving forward once either count is above 0.
+- **The attestation object is never read**: the browser's
+  `getPublicKey()` and `getAuthenticatorData()` hand over the key as
+  SPKI and the authenticator data as bytes, whose fixed layout is all
+  that is parsed (`authenticator.ts`).
+- **Challenges are rows, used once** (`passkey_challenges`): 32 random
+  bytes, only their SHA-256 stored, with the purpose (`add` or
+  `sign_in`), the `rp_id` and `origin`, an add's login, and two minutes
+  to live (`CHALLENGE_MS`), read from the clock inside the answer's
+  write, so one queued behind others still expires on time. Each insert deletes the expired rows in its write,
+  so anonymous asks never pile up between prunes; the answer deletes
+  its row in the write that adds the passkey or opens the login, so a
+  replay finds none. The two answers share `ASKS_PER_MINUTE` per
+  client address with the email asks; the two options routes have their
+  own `OPTIONS_PER_MINUTE` (60), since the sign-in page fetches options
+  on every view and keeps them fresh, and a few reloads must never spend
+  the window a person's emailed code needs.
+- **An add and a removal recheck their login inside their write**
+  (`recheck()` under `checkOf()`, as `PATCH /ui/me`), and an add's
+  challenge names that login, so one landing after a sign out
+  everywhere changes nothing (401).
+- **A passkey keeps the trust of the login that added it**: added from
+  an admin-key login it holds that login's `admin_digest`, and so does a
+  login it opens; a new `user-admin.key` deletes both at the prune, and
+  before it the sign-in refuses a passkey of an older digest. Added
+  after an emailed sign-in, both hold null.
+- **At most `PASSKEYS_PER_USER` (10) a person**, counted across
+  origins, then 409. The person's passkeys of this host, every port, go
+  into the add's `excludeCredentials`, so a device holding one is not added twice; a
+  credential already a row, anyone's, is 409.
+- **A passkey is named for its provider**, the password manager that
+  holds and syncs it, from the AAGUID in the add's authenticator data
+  (`providerOf()`, ids from the community passkey-authenticator-aaguids
+  list): "Apple Passwords", "Google Password Manager", "1Password" and
+  the like, else `Passkey` (a zeroed id, a security key, a manager not
+  listed). Kept in the `device` column; never the User-Agent, which
+  names only where it was added, an iPad's Safari saying Mac. No rename.
+- **An add emails the person**, after the answer and only while email
+  is on and they have an address: "A passkey in Apple Passwords was
+  added to your markets sign-in, 24 Nov 2026 07:00 UTC. Not you? Sign
+  in at https://markets.example.com/, remove it under Passkeys, and
+  have an admin sign you out everywhere." (removing it ends neither the
+  session that added it nor any it opened; only an admin's sign out
+  everywhere does),
+  "A passkey was added" for an unknown provider. The address is the
+  SMTP settings' public URL, never a sign-in link, so the email is no
+  way in.
+- **Every failed sign-in answers the same 401** (`passkey not
+  accepted`), whatever failed, with no cookie, but for a passkey this
+  server does not hold, removed or never added here: that one carries
+  `code: "unknown_passkey"`: it says only whether a credential id is
+  held here, never whose, and an id comes only from an authenticator.
+- **A passkey removed here is forgotten by the browser too**: the
+  password manager keeps a passkey the server dropped and its autofill
+  goes on offering it, under the person's email. Removing one of this
+  host (any port), and a sign-in answered `unknown_passkey` on an https
+  address, ask the browser to forget it; on loopback two installs on
+  two ports share the relying party, so an unknown answer there may be
+  another install's passkey and nothing is forgotten (`PublicKeyCredential.signalUnknownCredential()`, where the
+  browser has the Signal API). A refused passkey also ends the
+  autofill for that visit, and the Passkey way kept for a removed one
+  goes back to Email code (or the admin key), so an email typed next
+  and Enter ask for a code. A log line names a
+  passkey's id and its person, and a refusal only its reason word
+  (`passkey refused reason=signature`), never a credential id, key or
+  challenge.
+- **Sign out everywhere deletes the person's passkeys**, and removing a
+  person deletes them as a kind of their own (`docs/admin.md`).
+- **The browser fetches options before the tap**: iOS runs `create()`
+  and `get()` only inside the tap, and a fetch between may lose it, so
+  the drawer, the passkey step and the sign-in fetch options when they
+  show (`prime()` in `data/passkeys.ts`) and again `LEEWAY_MS` (30 s)
+  before their timeout, so the face or finger check still lands inside
+  the challenge's two minutes, and after every tap but a sign-in that
+  worked, since a challenge is used once. Their freshness counts from
+  the ask, not the answer, so a late answer is never trusted longer
+  than its challenge lives; a failed refresh tries again after 30 s
+  (`RETRY_MS`). A hidden tab skips the refresh and fetches stale
+  options when shown again, as a sleeping phone fires its timers late. Add a passkey and the Passkey way's
+  Sign in are disabled while stale options are being fetched; a tap that finds them stale only
+  fetches, and the button comes back once they land, so a tap never
+  awaits a fetch before the browser is asked. An add still asking when
+  the session ends sends nothing. The page turns base64url into bytes itself
+  (`Passkeys.model.ts`), and sends the add's `toJSON()` with each field
+  it lacks from the response's getters.
+- **The drawer is the user menu's** (`app/Passkeys.tsx`): "Passkeys"
+  under Push notifications, also in More, absent without
+  `PublicKeyCredential`. It sets the store's `passkeys.open`, and the drawer is
+  mounted in `Shell` after the bar, so the menu or More closing never
+  closes it; a session ending does, so the next sign-in opens on the page. It lists every passkey with the provider, another origin's with its host,
+  "Added 12 Nov" and, after a sign-in, "Last used 20 Nov" on the reader's
+  calendar (`passkeyLines()`), a Remove asked once, and "Add a passkey"
+  in the foot. Closing the browser's sheet says nothing
+  (`passkeyWords()`).
+- **A passkey step after every emailed sign-in**, in the sign-in's own
+  card, never inside a page: once signed in, the page strips
+  `?signed_in=1` with `replaceState` (`watchStep()`), and a browser
+  with a platform authenticator (asked once at start, so the step shows
+  in the first render) gets `PasskeyStep` in place of the app: "Sign in
+  faster next time", "Add a passkey" and "Skip". Nothing is kept, so
+  every emailed sign-in asks again; a device already holding one says
+  so and Skip goes on. An admin key sign-in never asks.
+- **The sign-in is one button with a menu of ways** (`Action` in
+  `views/SignIn.tsx`): Sign in, and beside it an arrow whose menu, as
+  wide as both, picks "Email code" (while email is on), "Passkey"
+  (where the browser has WebAuthn) or "Admin key", the one picked
+  checked and kept per browser in `localStorage` (`markets-sign-in`,
+  `wayOf()` falling back when it is not offered). One way alone has no
+  menu. Picking Passkey asks the browser at once, inside the menu's
+  tap, after aborting the autofill's request (a browser holds one);
+  cancelled, the card stays on the Passkey way, whose Sign in asks
+  again. The sign-in holds options while it shows, so the tap never
+  waits. The code
+  step uses the same button, "Sign in" (or "Try again"), with "Send a
+  new code" and "Use another email" in its menu. While a step works the
+  arrow is a spinner, and every error is one line under the field
+  (`Said`) that keeps its height.
+- **The email and admin key fields offer passkeys in their autofill**
+  where the browser has conditional mediation (`autofill()`): the field
+  says `webauthn` in its `autocomplete`, and `listen()` holds a
+  conditional `get()` open on the primed sign-in options, kept primed
+  so their refresh restarts it before the challenge expires, and
+  aborted when the field goes; a refused request waits for that refresh,
+  never fetching at once, since a browser refusing every request would
+  loop. A passkey picked there signs in as the Passkey way does and
+  lands where the answer says, as the code does; one picked while the
+  card is busy is held again on new options. A sign-in by key or
+  passkey drops a leftover `?signed_in=1` (`dropSignedIn()`), so it
+  asks no step.
+
+### The routes
+
+The account's are a login's own, as `/ui/push`: a request with
+`Authorization` is 403, one without a login 401. Writes are held to
+this server's pages. Every answer is `Cache-Control: no-store`. Fields
+named base64url are unpadded base64url, which the page turns into
+bytes itself.
+
+- **`GET /ui/passkeys`**: `{passkeys: [{id, credential_id, origin,
+  device, created_at, last_used_at}]}`, every origin's, oldest first;
+  `credential_id` base64url, so the page can ask the browser to forget
+  a removed one; times ISO 8601 UTC, `last_used_at` null until one
+  sign-in.
+- **`POST /ui/passkeys/options`**, no body: the add's
+  `PublicKeyCredentialCreationOptionsJSON`, `{challenge, rp: {id, name},
+  user: {id, name, displayName}, pubKeyCredParams: [{type, alg}],
+  timeout, attestation: "none", authenticatorSelection: {residentKey:
+  "required", requireResidentKey: true, userVerification: "required"},
+  excludeCredentials: [{type, id, transports}]}`; `challenge`,
+  `user.id` and each `id` base64url, `user.name` the email or, with
+  none, the name, `timeout` 120000 ms. 409 once the person holds 10.
+- **`POST /ui/passkeys`**: the add's answer, the credential's
+  `toJSON()`: `{id, rawId, type: "public-key", response:
+  {clientDataJSON, authenticatorData, publicKey, publicKeyAlgorithm,
+  transports}}`, the bytes base64url, `publicKey` from
+  `response.getPublicKey()` and `authenticatorData` from
+  `response.getAuthenticatorData()`; other fields
+  (`attestationObject`, `clientExtensionResults`,
+  `authenticatorAttachment`) are ignored. 201 with the list item; 400
+  `the passkey did not check out` for any failed check or a used or
+  expired challenge, so the page fetches new options; 409 at 10 or a
+  credential already added; 401 for a login ended meanwhile.
+- **`DELETE /ui/passkeys/<id>`**: the person's own, 204; anyone else's
+  or an unknown id 404; 401 for a login ended meanwhile.
+- **`POST /ui/passkeys/sign-in/options`**, public, no body: the
+  sign-in's `PublicKeyCredentialRequestOptionsJSON`, `{challenge, rpId,
+  timeout, userVerification: "required", allowCredentials: []}`:
+  discoverable, so the browser lists the relying party's passkeys and no email
+  is typed.
+- **`POST /ui/passkeys/sign-in`**, public: the credential's `toJSON()`,
+  `{id, rawId, type: "public-key", response: {clientDataJSON,
+  authenticatorData, signature, userHandle}}`, base64url. 200 with
+  `{landing: "/"}` and the cookie, ending the browser's older login as
+  the code does; 401 for any failure.
+- The four ceremony routes are 403 without a usable `Origin` or from
+  another site, and 429 with `Retry-After` past the ask limit. A body
+  is JSON, at most 16 KiB.
+
 ## What a login opens
 
 - **A person's own rows and the market data**: every `/api/v1` route
@@ -236,6 +469,7 @@ learns it from `email_on` in `GET /ui/me`.
 ## What an anonymous visitor sees
 
 - **The page, its assets, the sign-in's 401, `/ui/me`'s `email_on`,
+  a passkey sign-in's options (a challenge and the browser's own host),
   and the OpenAPI spec and its docs page, which describe the API of
   every install and nothing of this one**: no host path, key or key
   file name, data directory, version, source or flag name, instrument
@@ -375,9 +609,10 @@ learns it from `email_on` in `GET /ui/me`.
 - **The sign-in's code is six boxes** (`CodeBoxes`, rules in
   `SignIn.model.ts`): a paste or the system's one-time-code fill (the
   first box's `autocomplete`) fills every box from where it lands, and
-  the sixth digit signs in, once (`oneAtATime`), with no button. A code
-  taken whose person could not then be read offers a retry that reads
-  `/ui/me` again, never posting the used code (`codeFlow`). The line
+  the sixth digit signs in, once (`oneAtATime`), as Sign in does. A code
+  taken whose person could not then be read turns Sign in into Try
+  again, which reads `/ui/me` again, never posting the used code
+  (`codeFlow`). The line
   under the boxes keeps one height for every state, so the boxes never
   move.
 ## Design
@@ -1038,3 +1273,7 @@ Portfolios page is the reference for each part.
   checks the binary serves the page and the sign-in.
 - **Push** is `test/web-push.test.tsx` with a fake device and
   `test/push.test.ts` for the server's side.
+- **Passkeys** are `test/passkeys.test.ts`, with a fake authenticator
+  on WebCrypto (`test/helpers/passkeys.ts`, a P-256 and an RSA key)
+  whose every answer can be bent one way, so each test names the check
+  it breaks.

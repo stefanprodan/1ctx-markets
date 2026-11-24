@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { batch, computed, signal } from "@preact/signals";
+import { type AssertionJSON, UNKNOWN_PASSKEY } from "../app/Passkeys.model.ts";
 import { path } from "../app/router.ts";
 import { type Later, paced, slowFlag, timer } from "../lib/slow.ts";
 import {
@@ -23,6 +24,12 @@ import {
   failure,
   says,
 } from "./api.ts";
+import {
+  browserPasskeys,
+  PASSKEY_SIGN_IN_PATH,
+  type PasskeyDevice,
+  passkeysStore,
+} from "./passkeys.ts";
 import { portfolioStore } from "./portfolios.ts";
 import { profileStore } from "./profile.ts";
 import { browserPush, type PushDevice, pushStore } from "./push.ts";
@@ -518,6 +525,7 @@ export function store(
   reloadPage: () => void = () => location.reload(),
   later: Later = timer,
   device: PushDevice = browserPush(),
+  keyDevice: PasskeyDevice = browserPasskeys(),
 ) {
   // undefined until the first answer says whether the cookie holds
   const signedIn = signal<boolean | undefined>(undefined);
@@ -612,6 +620,7 @@ export function store(
     loading.value = false;
     alerts.signedOut();
     push.signedOut();
+    passkeys.signedOut();
     batch(() => {
       signedIn.value = false;
       me.value = null;
@@ -734,6 +743,7 @@ export function store(
     device,
     () => alerts.seen.value?.unseen ?? null,
   );
+  const passkeys = passkeysStore(call, () => session, keyDevice, now, later);
 
   // who is signed in: the web UI starts from it, never from the status,
   // which is an admin's. A later read supersedes one in flight
@@ -796,7 +806,15 @@ export function store(
     } catch {
       throw failure(0, null);
     }
-    if (res.status === 401) throw new ApiError(401, wrong);
+    if (res.status === 401) {
+      // the words stay the page's own; a code, such as an unknown
+      // passkey's, still reaches the caller
+      const said = (await res.json().catch(() => null)) as {
+        code?: unknown;
+      } | null;
+      const code = typeof said?.code === "string" ? said.code : null;
+      throw new ApiError(401, wrong, null, code);
+    }
     if (!res.ok) throw failure(res.status, await res.json().catch(() => null));
     return res;
   }
@@ -1613,6 +1631,7 @@ export function store(
     emailOn,
     admin,
     push,
+    passkeys,
     // the reader's own name; the refusal's sentence, or null once saved
     async setMyName(name: string): Promise<string | null> {
       try {
@@ -1679,6 +1698,35 @@ export function store(
         go(a.landing);
       }
       await opened();
+    },
+    // the browser is asked first, inside the tap, unless the autofill's
+    // answer is given; go: the landing, as the code's
+    async signInByPasskey(
+      go: (landing: string) => void,
+      answered?: AssertionJSON,
+    ): Promise<void> {
+      const sent = answered ?? (await passkeys.assert());
+      if (sent === null) return;
+      try {
+        const res = await post(
+          PASSKEY_SIGN_IN_PATH,
+          sent,
+          "passkey not accepted",
+        );
+        const a = (await res.json().catch(() => null)) as {
+          landing?: unknown;
+        } | null;
+        if (typeof a?.landing === "string" && a.landing.startsWith("/")) {
+          go(a.landing);
+        }
+        await opened();
+      } catch (e) {
+        if (e instanceof ApiError && e.code === UNKNOWN_PASSKEY) {
+          passkeys.forget(sent.id);
+        }
+        passkeys.signInFailed();
+        throw e;
+      }
     },
     async signOut(): Promise<void> {
       await call(SESSION_PATH, "DELETE");
