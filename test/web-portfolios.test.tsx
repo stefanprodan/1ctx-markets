@@ -2440,6 +2440,28 @@ describe("the page's model", () => {
   });
 });
 
+describe("activity", () => {
+  test("a buy shows its move to the holding's price under its price", () => {
+    const html = render(
+      <Activity
+        trades={[trade(), trade({ id: 2, side: "sell", date: "2026-03-01" })]}
+        holdings={HOLDINGS.holdings}
+        onOpen={() => {}}
+      />,
+    );
+    expect(html).toContain('class="num up small">+25.00%<');
+    expect(html.match(/%</g)?.length).toBe(1);
+  });
+
+  test("the side tag sits under the amount", () => {
+    const html = render(<Activity trades={[trade()]} onOpen={() => {}} />);
+    const amount = html.indexOf("321.50 EUR");
+    expect(amount).toBeGreaterThan(-1);
+    expect(html.indexOf(">Buy<")).toBeGreaterThan(amount);
+    expect(html).not.toContain("Alpha Made Up");
+  });
+});
+
 describe("removed trades", () => {
   const removed = trade({ id: 2, removed_at: "2026-03-03T10:00:00Z" });
 
