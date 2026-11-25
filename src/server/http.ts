@@ -27,7 +27,7 @@ import {
   loginCookie,
   sameOrigin,
 } from "./session.ts";
-import { buildSkills, SKILLS_PREFIX } from "./skills.ts";
+import { buildSkills, SKILL_FILES, SKILLS_PREFIX } from "./skills.ts";
 import type { Ui } from "./ui.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -131,7 +131,7 @@ const keyFields = (c: Caller | null, login: Login | null): LogFields =>
 export function router(deps: RouterDeps): Handle {
   const api = deps.api ?? [];
   const logins = deps.logins ?? null;
-  const skills = buildSkills();
+  const skills = buildSkills(SKILL_FILES);
   const ui = deps.ui ?? null;
   const rate = new RateLimit(CALLS_PER_MINUTE, MINUTE_MS);
   const now = () => deps.clock.now();

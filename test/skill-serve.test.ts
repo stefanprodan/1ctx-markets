@@ -4,7 +4,11 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { buildSkills, SKILLS_PREFIX } from "../src/server/skills.ts";
+import {
+  buildSkills,
+  SKILL_FILES,
+  SKILLS_PREFIX,
+} from "../src/server/skills.ts";
 import { withApp } from "./helpers/app.ts";
 
 const ROOT = join(import.meta.dir, "..", "skills");
@@ -131,8 +135,8 @@ describe("served skills", () => {
     }));
 
   test("a build is the same bytes every time", () => {
-    const a = buildSkills();
-    const b = buildSkills();
+    const a = buildSkills(SKILL_FILES);
+    const b = buildSkills(SKILL_FILES);
     for (const [path, file] of a) {
       expect(
         Buffer.from(b.get(path)!.body).equals(Buffer.from(file.body)),

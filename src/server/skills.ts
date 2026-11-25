@@ -129,9 +129,12 @@ function frontmatter(text: string, skill: string): Record<string, string> {
 const digest = (bytes: Bytes) =>
   `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}`;
 
+// one call: Bun inlines a macro's value at each call, so a default doubled it
+export const SKILL_FILES: Record<string, string> = skillFiles();
+
 // path under SKILLS_PREFIX → its bytes, built once
 export function buildSkills(
-  files: Record<string, string> = skillFiles(),
+  files: Record<string, string>,
 ): Map<string, Served> {
   const bySkill = new Map<string, [string, Bytes][]>();
   for (const path of Object.keys(files).sort()) {

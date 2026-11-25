@@ -47,6 +47,17 @@ server; the server never calls a model and never writes one itself.
   checks both archives hold the folder's files. A dot file is left
   out, a file that is not UTF-8 text fails the build, and a quoted or
   multi-line frontmatter value fails the tests and the start.
+- **`/mcp` serves the same files through the MCP skills extension**
+  (`io.modelcontextprotocol/skills`, `src/server/mcp.ts`), so a client
+  that supports it finds the skill without an install: every key, whatever
+  its access, sees `skill://<name>/SKILL.md` in `skills/list` with each
+  file's digest and size, and in `resources/list`, and reads each file
+  as `skill://<name>/<path>`. The MCP SDK's skill catalog loads once,
+  strict, so a SKILL.md it would only warn about fails every `/mcp`
+  request;
+  `resources.listChanged` stays false, since a stateless server never
+  sends it. `test/mcp-skills.test.ts` reads every file, verified, on
+  both protocol versions.
 
 ## About the symbol, never a person's money
 

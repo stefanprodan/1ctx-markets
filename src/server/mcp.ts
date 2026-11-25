@@ -7,6 +7,10 @@ import {
   type McpHttpHandler,
   McpServer,
 } from "@modelcontextprotocol/server";
+import {
+  memorySkillFiles,
+  SkillCatalog,
+} from "@modelcontextprotocol/server/ext/skills";
 import type { Markets } from "../operations/markets.ts";
 import {
   type Access,
@@ -14,8 +18,9 @@ import {
   NO_ACCESS,
   type Who,
 } from "../operations/who.ts";
-import { type Log, sdkErrorFields } from "../runtime/log.ts";
+import { errorFields, type Log, sdkErrorFields } from "../runtime/log.ts";
 import { registerTools } from "../tools/index.ts";
+import { SKILL_FILES } from "./skills.ts";
 
 const ACCESS = ["none", "read", "write"];
 
@@ -62,19 +67,32 @@ export function mcpHandler(
   markets: Markets | null = null,
 ): McpHttpHandler {
   const register = markets === null ? null : registerTools(markets);
+  // strict: a SKILL.md the SDK would only warn about fails instead
+  const skills = SkillCatalog.load(memorySkillFiles(SKILL_FILES), {
+    strict: true,
+    // the phrase only: a warning's text quotes the skill's files
+    onWarning: () => log.warn("mcp skill warning"),
+  });
+  // a failed load fails each request; this keeps it from going unhandled
+  skills.catch((error) => log.error("mcp skills failed", errorFields(error)));
   return createMcpHandler(
-    (ctx) => {
+    async (ctx) => {
       const who = whoFrom(ctx.authInfo);
       // declaring tools answers tools/list even with none registered
+      // listChanged false: a stateless server never sends a change
       const server = new McpServer(
         { name: SERVER_NAME, version },
         {
-          capabilities: { tools: { listChanged: false } },
+          capabilities: {
+            tools: { listChanged: false },
+            resources: { listChanged: false },
+          },
           // names only the tools this key lists
           instructions: instructions(who),
         },
       );
       register?.(server, who);
+      (await skills).attach(server);
       return server;
     },
     {
