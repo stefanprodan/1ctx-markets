@@ -58,7 +58,7 @@ import {
 } from "../ui/Table.tsx";
 import { Tabs } from "../ui/Tabs.tsx";
 import { CashSheet } from "./CashSheet.tsx";
-import { interestFacts } from "./InstrumentPosition.model.ts";
+import { heldOf, interestFacts } from "./InstrumentPosition.model.ts";
 import {
   AddSheet,
   type AddStart,
@@ -131,6 +131,7 @@ import {
   unitPrice,
   weightBar,
 } from "./Portfolios.model.ts";
+import { sinceBuy } from "./Positions.tsx";
 import "./portfolios.css";
 
 export type Panel = "add" | "import" | "settings" | null;
@@ -419,6 +420,7 @@ export function PortfoliosBody({
               <Activity
                 key={store.portfolio.value ?? "all"}
                 trades={trades ?? []}
+                holdings={h.holdings}
                 onOpen={(ids) => {
                   tradeIds.value = ids;
                 }}
@@ -1444,12 +1446,28 @@ export function TradeSheet({
 
 // ---- activity ----
 
+// a buy's move to its holding's price now, as the position drawer shows it
+function Since({
+  fills,
+  holdings,
+}: {
+  fills: TradeRow[];
+  holdings: readonly Holding[];
+}) {
+  const h = heldOf(holdings, fills[0]!.symbol);
+  const since = h === null ? null : sinceBuy(fills, h);
+  return since === null ? null : <Change s={percent(since)} class="small" />;
+}
+
 export function Activity({
   trades,
+  holdings = [],
   onOpen,
   removed: startRemoved = false,
 }: {
   trades: TradeRow[];
+  // their prices now, for a buy's move since
+  holdings?: readonly Holding[];
   onOpen: (ids: number[]) => void;
   // opens on the removed trades
   removed?: boolean;
@@ -1473,11 +1491,6 @@ export function Activity({
       cell: (f) => <span class="num faint">{day(f[0]!.date)}</span>,
     },
     {
-      key: "side",
-      width: { base: "64px", tablet: "60px" },
-      cell: (f) => <span class={sideTag(f[0]!)}>{sideWord(f[0]!)}</span>,
-    },
-    {
       key: "holding",
       head: "Holding",
       width: { base: "minmax(0, 1.6fr)", tablet: "minmax(0, 1fr)" },
@@ -1490,8 +1503,7 @@ export function Activity({
             name={
               <>
                 <span class="hide-tablet">
-                  {isFundId(t.symbol) ? "Fund" : nameOf(t.name, null, t.symbol)}
-                  {f.length > 1 ? ` · ${f.length} fills` : ""}
+                  {f.length > 1 ? `${f.length} fills` : ""}
                 </span>
                 <span class="show-tablet">
                   {day(t.date)} ·{" "}
@@ -1532,9 +1544,12 @@ export function Activity({
       hide: "tablet",
       cell: (f) =>
         isReward(f[0]!) ? null : (
-          <Num class="faint amount">
-            {unitPrice(orderOf(f).price, f[0]!.currency, f[0]!.unit)}
-          </Num>
+          <>
+            <Num class="faint amount pf-price">
+              {unitPrice(orderOf(f).price, f[0]!.currency, f[0]!.unit)}
+            </Num>
+            <Since fills={f} holdings={holdings} />
+          </>
         ),
     },
     {
@@ -1542,10 +1557,16 @@ export function Activity({
       head: "Amount",
       width: { base: "minmax(0, 1fr)", tablet: "108px" },
       align: "end",
-      cell: (f) =>
-        isReward(f[0]!) ? null : (
-          <Num class="amount">{money(orderOf(f).amount, f[0]!.currency)}</Num>
-        ),
+      cell: (f) => (
+        <>
+          {!isReward(f[0]!) && (
+            <Num class="amount pf-price">
+              {money(orderOf(f).amount, f[0]!.currency)}
+            </Num>
+          )}
+          <span class={sideTag(f[0]!)}>{sideWord(f[0]!)}</span>
+        </>
+      ),
     },
   ];
   const groups: TableGroup<TradeRow[]>[] = view.months
